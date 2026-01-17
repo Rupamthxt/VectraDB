@@ -1,7 +1,7 @@
 package store
 
 import (
-	"math/rand"
+	"fmt"
 )
 
 type IVFIndex struct {
@@ -30,10 +30,16 @@ func (ivf *IVFIndex) Train(arena *VectorArena, iter int) {
 	dim := arena.dim
 
 	ivf.Centroids = make([][]float32, ivf.NumClusters)
+	step := dataSize / ivf.NumClusters // Calculate step size
 
-	for i := range ivf.NumClusters {
-		randIdx := uint32(rand.Intn(dataSize))
-		vec, _ := arena.Get(randIdx)
+	for i := 0; i < ivf.NumClusters; i++ {
+		// Pick indices evenly: 0, 50000, 100000...
+		idx := uint32(i * step)
+		if int(idx) >= dataSize {
+			idx = uint32(dataSize - 1)
+		} // Safety
+
+		vec, _ := arena.Get(idx)
 
 		centroid := make([]float32, dim)
 		copy(centroid, vec)
@@ -84,4 +90,32 @@ func (ivf *IVFIndex) Train(arena *VectorArena, iter int) {
 		}
 	}
 	ivf.IsTrained = true
+
+	// --- DEBUG: Print Bucket Stats ---
+	minSize := 999999999
+	maxSize := 0
+	nonEmpty := 0
+	total := 0
+
+	for _, ids := range ivf.Buckets {
+		size := len(ids)
+		if size > 0 {
+			nonEmpty++
+			if size < minSize {
+				minSize = size
+			}
+			if size > maxSize {
+				maxSize = size
+			}
+			total += size
+		}
+	}
+
+	fmt.Printf("\n--- IVF Debug Stats ---\n")
+	fmt.Printf("Total Clusters: %d\n", ivf.NumClusters)
+	fmt.Printf("Non-Empty Clusters: %d\n", nonEmpty)
+	fmt.Printf("Min Bucket Size: %d\n", minSize)
+	fmt.Printf("Max Bucket Size: %d\n", maxSize)
+	fmt.Printf("Avg Bucket Size: %d\n", total/ivf.NumClusters)
+	fmt.Printf("-----------------------\n")
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rupamthxt/vectradb/internal/store"
@@ -11,7 +12,7 @@ import (
 
 const (
 	Dimension    = 128
-	TotalVectors = 100_000
+	TotalVectors = 5_000_000
 	TotalQueries = 1000
 	K            = 10
 	NumWorkers   = 8 // Concurrency
@@ -72,22 +73,35 @@ func runConcurrentSearch(db *store.VectraDB, queries [][]float32) {
 	var wg sync.WaitGroup
 	chunkSize := len(queries) / NumWorkers
 
+	// Atomic counter for total hits
+	var totalHits int64
+
 	for w := 0; w < NumWorkers; w++ {
 		wg.Add(1)
 		go func(offset int) {
 			defer wg.Done()
+			localHits := 0
 			for i := 0; i < chunkSize; i++ {
-				_ = db.Search(queries[offset+i], K)
+				results := db.Search(queries[offset+i], K)
+				if len(results) > 0 {
+					localHits++
+				}
 			}
+			atomic.AddInt64(&totalHits, int64(localHits))
 		}(w * chunkSize)
 	}
 	wg.Wait()
+
+	// Print hit rate only once (hacky but works for now)
+	if totalHits < int64(len(queries)) {
+		fmt.Printf("⚠️ WARNING: Low Hit Rate! Found results for %d/%d queries.\n", totalHits, len(queries))
+	}
 }
 
 func randomVector(dim int) []float32 {
 	vec := make([]float32, dim)
 	for i := 0; i < dim; i++ {
-		vec[i] = rand.Float32()
+		vec[i] = rand.Float32()*2 - 1 // Random float between -1 and 1
 	}
 	return vec
 }
