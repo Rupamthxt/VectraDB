@@ -51,7 +51,7 @@ make run
 ### 3. API Examples
 #### Insert a Vector:
 ```bash 
-curl -X POST http://localhost:8080/api/v1/vectors \
+curl -X POST http://localhost:8080/api/v1/insert \
   -H "Content-Type: application/json" \
   -d '{
     "id": "user_123",
