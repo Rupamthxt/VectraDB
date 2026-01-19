@@ -3,7 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
+
+	//"os"
 
 	"github.com/rupamthxt/vectradb/internal/store"
 
@@ -18,32 +19,23 @@ const SnapshotPath = "./vectradb.snap"
 func main() {
 	fmt.Println("Initializing VectraDB (High-Perf) mode...")
 
-	var db *store.VectraDB
-	var err error
-
-	if _, err = os.Stat(SnapshotPath); err == nil {
-		fmt.Println("Found snapshot. Loading data from disk...")
-		db, err = store.LoadVectraDB(SnapshotPath)
-		if err != nil {
-			log.Fatalf("Failed to load snapshot: %v", err)
-		}
-		fmt.Println("Snapshot loaded successfully.")
-	} else {
-		fmt.Println("No snapshot found. Starting fresh.")
-		db = store.NewVectraDB(3)
+	baseDir := "./data"
+	cluster, err := store.NewCluster(32, 128, baseDir)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	app := fiber.New()
 	app.Use(logger.New())
 
-	handler := vectorHttp.NewHandler(db)
+	handler := vectorHttp.NewHandler(cluster)
 
 	api := app.Group("/api/v1")
 	api.Post("/insert", handler.Insert)
 	api.Post("/search", handler.Search)
 
 	admin := app.Group("/admin")
-	admin.Post("/save", handler.SaveToDisk)
+	// admin.Post("/save", handler.SaveToDisk)
 	admin.Post("/index", handler.CreateIndex)
 
 	log.Println("VectraDB listening on port : 8080")

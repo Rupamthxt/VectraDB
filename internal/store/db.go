@@ -23,22 +23,34 @@ type VectraDB struct {
 	arena *VectorArena
 
 	// Cold Path Storage
-	metadata map[uint32][]byte
+	// metadata map[uint32][]byte
+
+	metaLocs map[uint32]FileLocation
+
+	disk *DiskStore
 
 	dim int
 
 	ivf *IVFIndex
 }
 
-func NewVectraDB(dim int) *VectraDB {
+func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
+
+	ds, err := NewDiskStore(storagePath)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to init disk store at %s: %w", storagePath, err)
+	}
+
 	return &VectraDB{
 		index:    make(map[string]uint32),
 		revIndex: make([]string, 10000),
 		arena:    NewVectorArena(dim, 10000),
-		metadata: make(map[uint32][]byte),
+		// metadata: make(map[uint32][]byte),
+		metaLocs: make(map[uint32]FileLocation),
+		disk:     ds,
 		dim:      dim,
-		ivf:      NewIVFIndex(100),
-	}
+		ivf:      NewIVFIndex(2000),
+	}, nil
 }
 
 func (db *VectraDB) Insert(id string, vector []float32, data any) error {
@@ -54,10 +66,16 @@ func (db *VectraDB) Insert(id string, vector []float32, data any) error {
 	if err != nil {
 		return err
 	}
+
+	loc, err := db.disk.Write(bytes)
+	if err != nil {
+		return err
+	}
+
 	db.index[id] = idx
 	db.revIndex = append(db.revIndex, id)
 
-	db.metadata[idx] = bytes
+	db.metaLocs[idx] = loc
 
 	return nil
 }
@@ -72,7 +90,11 @@ func (db *VectraDB) Get(id string) ([]float32, []byte, bool) {
 	}
 
 	vec, _ := db.arena.Get(idx)
-	meta := db.metadata[idx]
+	metaLoc := db.metaLocs[idx]
+	meta, err := db.disk.Read(metaLoc)
+	if err != nil {
+		return vec, nil, true
+	}
 	return vec, meta, true
 }
 
@@ -156,13 +178,16 @@ func (db *VectraDB) finalizeResults(heap MinHeap) []VectroRecord {
 			continue
 		}
 
-		realID := db.revIndex[internalIdx]
-		meta := db.metadata[internalIdx]
+		loc, exists := db.metaLocs[internalIdx]
+		var metadata []byte
+		if exists {
+			metadata, _ = db.disk.Read(loc)
+		}
 
 		results = append(results, VectroRecord{
-			ID:    realID,
+			ID:    db.revIndex[internalIdx],
 			Score: match.Score,
-			Data:  meta,
+			Data:  metadata,
 		})
 	}
 
@@ -181,6 +206,30 @@ func cosineSimilarity(a, b []float32) float32 {
 	}
 	return dot / (float32(math.Sqrt(float64(mag1)))) * float32(math.Sqrt(float64(mag2)))
 
+}
+
+func (db *VectraDB) AutoTuneIndex() {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	count := float64(db.arena.nextIndex)
+	if count == 0 {
+		return
+	}
+
+	// Calculate Sqrt(N)
+	targetClusters := int(math.Sqrt(count))
+
+	// Clamp values (don't go too small or too crazy big)
+	if targetClusters < 10 {
+		targetClusters = 10
+	}
+	if targetClusters > 5000 {
+		targetClusters = 5000
+	}
+
+	fmt.Printf("Auto-Tuning: Recreating IVF with %d clusters for %d vectors\n", targetClusters, int(count))
+	db.ivf = NewIVFIndex(targetClusters)
 }
 
 func (db *VectraDB) CreateIndex() {

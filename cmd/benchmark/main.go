@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,8 +23,10 @@ func main() {
 	fmt.Printf("🔥 Starting VectraDB Benchmark\n")
 	fmt.Printf("Config: Dim=%d | Items=%d | Queries=%d\n\n", Dimension, TotalVectors, TotalQueries)
 
-	db := store.NewVectraDB(Dimension)
+	os.Mkdir("data_bench", 0755)
+	defer os.RemoveAll("data_bench")
 
+	cluster, _ := store.NewCluster(12, Dimension, "data_bench")
 	// --- PHASE 1: INGESTION ---
 	fmt.Println("--- Phase 1: Ingestion ---")
 	vectors := make([][]float32, TotalVectors)
@@ -35,7 +38,7 @@ func main() {
 
 	startWrite := time.Now()
 	for i := 0; i < TotalVectors; i++ {
-		_ = db.Insert(ids[i], vectors[i], nil)
+		_ = cluster.Insert(ids[i], vectors[i], nil)
 	}
 	fmt.Printf("✅ Inserted %d vectors in %v\n", TotalVectors, time.Since(startWrite))
 
@@ -48,20 +51,20 @@ func main() {
 	// --- PHASE 2: BRUTE FORCE SEARCH ---
 	fmt.Println("\n--- Phase 2: Brute Force Search ---")
 	startRead := time.Now()
-	runConcurrentSearch(db, queries)
+	runConcurrentSearch(cluster, queries)
 	durationRead := time.Since(startRead)
 	fmt.Printf("🚀 Brute Force QPS: %.2f\n", float64(TotalQueries)/durationRead.Seconds())
 
 	// --- PHASE 3: TRAINING IVF ---
 	fmt.Println("\n--- Phase 3: Training IVF Index ---")
 	startTrain := time.Now()
-	db.CreateIndex() // <--- This triggers the K-Means Clustering
+	cluster.CreateIndex() // <--- This triggers the K-Means Clustering
 	fmt.Printf("✅ Index Trained in %v\n", time.Since(startTrain))
 
 	// --- PHASE 4: IVF SEARCH ---
 	fmt.Println("\n--- Phase 4: IVF (Approximate) Search ---")
 	startIVF := time.Now()
-	runConcurrentSearch(db, queries)
+	runConcurrentSearch(cluster, queries)
 	durationIVF := time.Since(startIVF)
 	fmt.Printf("🚀 IVF QPS: %.2f\n", float64(TotalQueries)/durationIVF.Seconds())
 
@@ -69,7 +72,7 @@ func main() {
 	fmt.Printf("\n⚡ Speedup Factor: %.2fx\n", speedup)
 }
 
-func runConcurrentSearch(db *store.VectraDB, queries [][]float32) {
+func runConcurrentSearch(cluster *store.Cluster, queries [][]float32) {
 	var wg sync.WaitGroup
 	chunkSize := len(queries) / NumWorkers
 
@@ -82,7 +85,7 @@ func runConcurrentSearch(db *store.VectraDB, queries [][]float32) {
 			defer wg.Done()
 			localHits := 0
 			for i := 0; i < chunkSize; i++ {
-				results := db.Search(queries[offset+i], K)
+				results := cluster.Search(queries[offset+i], K)
 				if len(results) > 0 {
 					localHits++
 				}

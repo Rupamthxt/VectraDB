@@ -8,11 +8,11 @@ import (
 )
 
 type Handler struct {
-	db *store.VectraDB
+	cluster *store.Cluster
 }
 
-func NewHandler(db *store.VectraDB) *Handler {
-	return &Handler{db: db}
+func NewHandler(cluster *store.Cluster) *Handler {
+	return &Handler{cluster: cluster}
 }
 
 func (h *Handler) Insert(c *fiber.Ctx) error {
@@ -26,7 +26,7 @@ func (h *Handler) Insert(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and vector are required"})
 	}
 
-	err := h.db.Insert(req.ID, req.Vector, req.Data)
+	err := h.cluster.Insert(req.ID, req.Vector, req.Data)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -49,7 +49,7 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 		req.TopK = 5 // Default TopK
 	}
 
-	results := h.db.Search(req.Vector, req.TopK)
+	results := h.cluster.Search(req.Vector, req.TopK)
 
 	responseItems := make([]SearchResult, 0, len(results))
 	for _, res := range results {
@@ -68,14 +68,14 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 	return c.JSON(SearchResponse{Results: responseItems})
 }
 
-func (h *Handler) SaveToDisk(c *fiber.Ctx) error {
-	err := h.db.Save("./vectradb.snap")
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"status": "snapshot_saved", "path": "./vectradb.snap"})
-}
+//	func (h *Handler) SaveToDisk(c *fiber.Ctx) error {
+//		err := h.cluster.Write("./vectradb.snap")
+//		if err != nil {
+//			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+//		}
+//		return c.JSON(fiber.Map{"status": "snapshot_saved", "path": "./vectradb.snap"})
+//	}
 func (h *Handler) CreateIndex(c *fiber.Ctx) error {
-	go h.db.CreateIndex()
+	go h.cluster.CreateIndex()
 	return c.JSON(fiber.Map{"status": "index_creation_started"})
 }
