@@ -13,7 +13,7 @@ import (
 
 const (
 	Dimension    = 128
-	TotalVectors = 5_000_000
+	TotalVectors = 5_000_00
 	TotalQueries = 1000
 	K            = 10
 	NumWorkers   = 8 // Concurrency

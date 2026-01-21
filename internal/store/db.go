@@ -44,7 +44,7 @@ func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
 	return &VectraDB{
 		index:    make(map[string]uint32),
 		revIndex: make([]string, 10000),
-		arena:    NewVectorArena(dim, 10000),
+		arena:    NewVectorArena(dim),
 		// metadata: make(map[uint32][]byte),
 		metaLocs: make(map[uint32]FileLocation),
 		disk:     ds,
@@ -112,21 +112,28 @@ func (db *VectraDB) Search(query []float32, topK int) []VectroRecord {
 func (db *VectraDB) searchBruteForce(query []float32, topK int) []VectroRecord {
 	heap := make(MinHeap, 0, topK)
 
-	arenaData := db.arena.data
-	count := int(db.arena.nextIndex)
-	dim := db.dim
+	globalIndex := uint32(0)
 
-	for i := range count {
-		start := i * dim
-		end := start + dim
+	for _, page := range db.arena.pages {
+		for i := 0; i < len(page); i += db.dim {
+			if i+db.dim > len(page) {
+				break
+			}
 
-		targetVec := arenaData[start:end]
-		score := cosineSimilarity(query, targetVec)
+			vec := page[i : i+db.dim]
+			if globalIndex >= db.arena.totalVectors {
+				break
+			}
 
-		if len(heap) < topK {
-			heap.Push(Match{Index: uint32(i), Score: score})
-		} else if score > heap[0].Score {
-			heap.Replace(Match{Index: uint32(i), Score: score})
+			score := cosineSimilarity(query, vec)
+
+			if len(heap) < topK {
+				heap.Push(Match{Index: globalIndex, Score: score})
+			} else if score > heap[0].Score {
+				heap.Replace(Match{Index: globalIndex, Score: score})
+			}
+
+			globalIndex++
 		}
 	}
 
@@ -212,7 +219,7 @@ func (db *VectraDB) AutoTuneIndex() {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
-	count := float64(db.arena.nextIndex)
+	count := float64(db.arena.totalVectors)
 	if count == 0 {
 		return
 	}

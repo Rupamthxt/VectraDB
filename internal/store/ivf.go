@@ -21,7 +21,7 @@ func NewIVFIndex(numClusters int) *IVFIndex {
 }
 
 func (ivf *IVFIndex) Train(arena *VectorArena, iter int) {
-	dataSize := int(arena.nextIndex)
+	dataSize := int(arena.totalVectors)
 	if dataSize < ivf.NumClusters {
 		//Not enough data to form clusters
 		return
