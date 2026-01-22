@@ -5,6 +5,28 @@
 
 VectraDB is a lightweight, cloud-native vector store designed for AI infrastructure and high-throughput embedding workloads. It leverages **Arena Memory Allocation** to bypass Go's Garbage Collection overhead and implements **IVF (Inverted File Index)** for ultra-fast Approximate Nearest Neighbor (ANN) search.
 
+
+### Architecture
+
+```mermaid
+graph TD
+    A[Client Request] -->|Insert Vector| B(WAL - Write Ahead Log)
+    B -->|Durability Sync| C{MemTable}
+    C -->|Batch Full| D[Paged Arena Allocator]
+    
+    subgraph "Memory Management"
+    D -->|Alloc 4MB Page| E[Off-Heap Memory Block]
+    E -->|Pointer Arithmetic| F[Vector Node]
+    end
+    
+    subgraph "Indexing"
+    F -->|Insert| G[HNSW Graph Layers]
+    end
+    
+    style B fill:#f9f,stroke:#333,stroke-width:2px
+    style D fill:#bbf,stroke:#333,stroke-width:2px
+```
+
 ## 🚀 Key Features
 
 * **Zero-Copy Architecture:** Uses a custom memory arena (`[]float32` slab) to minimize GC pauses and maximize CPU cache locality.
