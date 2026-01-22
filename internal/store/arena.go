@@ -48,7 +48,7 @@ func (a *VectorArena) Add(vector []float32) (uint32, error) {
 		return 0, fmt.Errorf("vector dimension mismatch expected %d got %d", a.dim, len(vector))
 	}
 
-	if a.currentPageIdx >= VectorsPerPage {
+	if a.currentVecIdx >= VectorsPerPage {
 		// Allocate a new page
 		newPage := make([]float32, a.dim*VectorsPerPage)
 		a.pages = append(a.pages, newPage)
@@ -57,10 +57,20 @@ func (a *VectorArena) Add(vector []float32) (uint32, error) {
 		a.currentVecIdx = 0
 	}
 
-	offset := a.currentPageIdx * a.dim
-	copy(a.pages[a.currentPageIdx][offset:offset], vector)
+	// 1. Calculate offset using the VECTOR index, not the page index
+	start := a.currentVecIdx * a.dim
+	end := start + a.dim
 
-	globalId := uint32((a.currentPageIdx * VectorsPerPage) + a.currentVecIdx)
+	// 2. Ensure we are writing to the LATEST page
+	// Using len(a.pages)-1 is safer than trusting currentPageIdx if sync gets weird
+	targetPage := a.pages[len(a.pages)-1]
+
+	// 3. Copy data
+	copy(targetPage[start:end], vector)
+
+	// 4. Calculate Global ID
+	// Logic: (Completed Pages * Size) + Current Index
+	globalId := uint32((len(a.pages)-1)*VectorsPerPage + a.currentVecIdx)
 
 	a.currentVecIdx++
 	a.totalVectors++
