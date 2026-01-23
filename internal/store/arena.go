@@ -58,7 +58,6 @@ func (a *VectorArena) Add(vector []float32) (uint32, error) {
 
 	// 1. Calculate offset using the VECTOR index
 	start := a.currentVecIdx * a.dim * 4
-	//end := start + a.dim
 
 	// 2. Ensure we are writing to the LATEST page
 	// Using len(a.pages)-1 is safer than trusting currentPageIdx if sync gets weird

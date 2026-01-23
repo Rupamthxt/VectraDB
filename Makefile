@@ -1,4 +1,3 @@
-# .PHONY tells Make that these are commands, not actual files
 .PHONY: all build run test benchmark docker-build docker-run clean
 
 # Variables
@@ -22,7 +21,7 @@ run: build
 	@echo "Starting server on :8080..."
 	@./bin/$(BINARY_NAME)
 
-# Run the benchmark tool (The "Portfolio Proof")
+# Run the benchmark tool locally
 benchmark:
 	@echo "Running Benchmark Suite..."
 	@go run ./cmd/benchmark/main.go
@@ -30,7 +29,6 @@ benchmark:
 # --- Docker Operations ---
 
 # Build the optimized Docker image
-# Note: Using --network=host to fix the DNS/IPv6 issues we encountered
 docker-build:
 	@echo "Building Docker Image..."
 	@docker build --network=host -t $(DOCKER_IMAGE) .
