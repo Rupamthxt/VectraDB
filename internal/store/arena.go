@@ -1,45 +1,44 @@
 package store
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math"
 	"sync"
 )
 
-const VectorsPerPage = 50000
+const PageSizeBytes = 4 * 1024 * 1024 // 4MB
 
 type VectorArena struct {
 	mu sync.RWMutex
-	// data      []float32 // Slab of Memory
-	// dim       int       // Dimension of Vectors
-	// nextIndex uint32    //   Next available slot index
 
 	dim            int
-	pages          [][]float32
+	pages          [][]byte
 	currentPageIdx int
 	currentVecIdx  int
-
-	totalVectors uint32
+	vectorsPerPage int
+	totalVectors   uint32
 }
 
 // Initializes arena with a pre allocated capacity
 func NewVectorArena(dim int) *VectorArena {
 
-	firstPage := make([]float32, dim*VectorsPerPage)
+	firstPage := make([]byte, PageSizeBytes) // 4MB page
+	vecSizeBytes := dim * 4                  // 4bytes per float32
+	count := PageSizeBytes / vecSizeBytes
 
 	return &VectorArena{
-		// Pre-allocate memory to avoid resizing
-		// data:      make([]float32, 0, capacity*dim),
-		// dim:       dim,
-		// nextIndex: 0,
 
 		dim:            dim,
-		pages:          [][]float32{firstPage},
+		pages:          [][]byte{firstPage},
 		currentPageIdx: 0,
 		currentVecIdx:  0,
 		totalVectors:   0,
+		vectorsPerPage: count,
 	}
 }
 
+// Inserts a vector in the arena and returns its global index
 func (a *VectorArena) Add(vector []float32) (uint32, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -48,29 +47,31 @@ func (a *VectorArena) Add(vector []float32) (uint32, error) {
 		return 0, fmt.Errorf("vector dimension mismatch expected %d got %d", a.dim, len(vector))
 	}
 
-	if a.currentVecIdx >= VectorsPerPage {
+	if a.currentVecIdx >= a.vectorsPerPage {
 		// Allocate a new page
-		newPage := make([]float32, a.dim*VectorsPerPage)
+		newPage := make([]byte, PageSizeBytes)
 		a.pages = append(a.pages, newPage)
 
 		a.currentPageIdx++
 		a.currentVecIdx = 0
 	}
 
-	// 1. Calculate offset using the VECTOR index, not the page index
-	start := a.currentVecIdx * a.dim
-	end := start + a.dim
+	// 1. Calculate offset using the VECTOR index
+	start := a.currentVecIdx * a.dim * 4
+	//end := start + a.dim
 
 	// 2. Ensure we are writing to the LATEST page
 	// Using len(a.pages)-1 is safer than trusting currentPageIdx if sync gets weird
 	targetPage := a.pages[len(a.pages)-1]
 
 	// 3. Copy data
-	copy(targetPage[start:end], vector)
+	for i, v := range vector {
+		binary.LittleEndian.PutUint32(targetPage[start+i*4:start+i*4+4], math.Float32bits(v))
+	}
 
 	// 4. Calculate Global ID
 	// Logic: (Completed Pages * Size) + Current Index
-	globalId := uint32((len(a.pages)-1)*VectorsPerPage + a.currentVecIdx)
+	globalId := uint32((len(a.pages)-1)*a.vectorsPerPage + a.currentVecIdx)
 
 	a.currentVecIdx++
 	a.totalVectors++
@@ -78,6 +79,7 @@ func (a *VectorArena) Add(vector []float32) (uint32, error) {
 	return globalId, nil
 }
 
+// Retrieves a vector by its global index
 func (a *VectorArena) Get(index uint32) ([]float32, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -86,14 +88,21 @@ func (a *VectorArena) Get(index uint32) ([]float32, error) {
 		return nil, fmt.Errorf("Index out of bounds")
 	}
 
-	pageIdx := int(index) / VectorsPerPage
-	vecIdxInPage := int(index) % VectorsPerPage
+	pageIdx := int(index) / a.vectorsPerPage
+	vecIdxInPage := int(index) % a.vectorsPerPage
 
-	offset := vecIdxInPage * a.dim
+	offset := vecIdxInPage * a.dim * 4
 
-	return a.pages[pageIdx][offset : offset+a.dim], nil
+	// Convert bytes back to float32 slice
+	vec := make([]float32, a.dim)
+	for i := 0; i < a.dim; i++ {
+		vec[i] = math.Float32frombits(binary.LittleEndian.Uint32(a.pages[pageIdx][offset+i*4 : offset+i*4+4]))
+	}
+
+	return vec, nil
 }
 
+// Returns the total number of vectors stored
 func (a *VectorArena) Size() int {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
