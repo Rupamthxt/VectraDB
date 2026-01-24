@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"unsafe"
 )
 
 type VectroRecord struct {
@@ -112,28 +113,25 @@ func (db *VectraDB) Search(query []float32, topK int) []VectroRecord {
 func (db *VectraDB) searchBruteForce(query []float32, topK int) []VectroRecord {
 	heap := make(MinHeap, 0, topK)
 
-	globalIndex := uint32(0)
+	for pages, pageBytes := range db.arena.pages {
+		bytesPerVector := db.arena.dim * 4
+		vectorCount := len(pageBytes) / bytesPerVector
 
-	for _, page := range db.arena.pages {
-		for i := 0; i < len(page); i += db.dim {
-			if i+db.dim > len(page) {
-				break
-			}
+		for i := 0; i < vectorCount; i++ {
+			start := i * bytesPerVector
 
-			vec := page[i : i+db.dim]
-			if globalIndex >= db.arena.totalVectors {
-				break
-			}
+			ptr := unsafe.Pointer(&pageBytes[start])
+			targetVector := unsafe.Slice((*float32)(ptr), db.arena.dim)
 
-			score := cosineSimilarity(query, vec)
+			score := cosineSimilarity(query, targetVector)
+
+			globalId := uint32(pages*db.arena.vectorsPerPage + i)
 
 			if len(heap) < topK {
-				heap.Push(Match{Index: globalIndex, Score: score})
+				heap.Push(Match{Index: globalId, Score: score})
 			} else if score > heap[0].Score {
-				heap.Replace(Match{Index: globalIndex, Score: score})
+				heap.Replace(Match{Index: globalId, Score: score})
 			}
-
-			globalIndex++
 		}
 	}
 
