@@ -1,9 +1,7 @@
 package store
 
 import (
-	"encoding/binary"
 	"fmt"
-	"math"
 	"sync"
 )
 
@@ -13,7 +11,7 @@ type VectorArena struct {
 	mu sync.RWMutex
 
 	dim            int
-	pages          [][]byte
+	pages          [][]float32
 	currentPageIdx int
 	currentVecIdx  int
 	vectorsPerPage int
@@ -23,14 +21,14 @@ type VectorArena struct {
 // Initializes arena with a pre allocated capacity
 func NewVectorArena(dim int) *VectorArena {
 
-	firstPage := make([]byte, PageSizeBytes) // 4MB page
-	vecSizeBytes := dim * 4                  // 4bytes per float32
+	firstPage := make([]float32, PageSizeBytes/4) // 4MB page
+	vecSizeBytes := dim * 4                       // 4bytes per float32
 	count := PageSizeBytes / vecSizeBytes
 
 	return &VectorArena{
 
 		dim:            dim,
-		pages:          [][]byte{firstPage},
+		pages:          [][]float32{firstPage},
 		currentPageIdx: 0,
 		currentVecIdx:  0,
 		totalVectors:   0,
@@ -49,7 +47,7 @@ func (a *VectorArena) Add(vector []float32) (uint32, error) {
 
 	if a.currentVecIdx >= a.vectorsPerPage {
 		// Allocate a new page
-		newPage := make([]byte, PageSizeBytes)
+		newPage := make([]float32, PageSizeBytes/4)
 		a.pages = append(a.pages, newPage)
 
 		a.currentPageIdx++
@@ -57,16 +55,15 @@ func (a *VectorArena) Add(vector []float32) (uint32, error) {
 	}
 
 	// 1. Calculate offset using the VECTOR index
-	start := a.currentVecIdx * a.dim * 4
+	start := a.currentVecIdx * a.dim
+	end := start + a.dim
 
 	// 2. Ensure we are writing to the LATEST page
 	// Using len(a.pages)-1 is safer than trusting currentPageIdx if sync gets weird
 	targetPage := a.pages[len(a.pages)-1]
 
 	// 3. Copy data
-	for i, v := range vector {
-		binary.LittleEndian.PutUint32(targetPage[start+i*4:start+i*4+4], math.Float32bits(v))
-	}
+	copy(targetPage[start:end], vector)
 
 	// 4. Calculate Global ID
 	// Logic: (Completed Pages * Size) + Current Index
@@ -90,13 +87,10 @@ func (a *VectorArena) Get(index uint32) ([]float32, error) {
 	pageIdx := int(index) / a.vectorsPerPage
 	vecIdxInPage := int(index) % a.vectorsPerPage
 
-	offset := vecIdxInPage * a.dim * 4
+	offset := vecIdxInPage * a.dim
 
 	// Convert bytes back to float32 slice
-	vec := make([]float32, a.dim)
-	for i := 0; i < a.dim; i++ {
-		vec[i] = math.Float32frombits(binary.LittleEndian.Uint32(a.pages[pageIdx][offset+i*4 : offset+i*4+4]))
-	}
+	vec := a.pages[pageIdx][offset : offset+a.dim]
 
 	return vec, nil
 }

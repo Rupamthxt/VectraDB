@@ -1,7 +1,6 @@
 package store
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -116,15 +115,12 @@ func (db *VectraDB) searchBruteForce(query []float32, topK int) []VectroRecord {
 	globalIndex := uint32(0)
 
 	for _, page := range db.arena.pages {
-		for i := 0; i < len(page); i += db.dim * 4 {
-			if i+db.dim*4 > len(page) {
+		for i := 0; i < len(page); i += db.dim {
+			if i+db.dim > len(page) {
 				break
 			}
 
-			vec := make([]float32, db.dim)
-			for j := i; j < i+db.dim*4; j += 4 {
-				vec[(j-i)/4] = math.Float32frombits(binary.LittleEndian.Uint32(page[j : j+4]))
-			}
+			vec := page[i : i+db.dim]
 			if globalIndex >= db.arena.totalVectors {
 				break
 			}
