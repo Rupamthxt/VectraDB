@@ -68,13 +68,6 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 	return c.JSON(SearchResponse{Results: responseItems})
 }
 
-//	func (h *Handler) SaveToDisk(c *fiber.Ctx) error {
-//		err := h.cluster.Write("./vectradb.snap")
-//		if err != nil {
-//			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
-//		}
-//		return c.JSON(fiber.Map{"status": "snapshot_saved", "path": "./vectradb.snap"})
-//	}
 func (h *Handler) CreateIndex(c *fiber.Ctx) error {
 	go h.cluster.CreateIndex()
 	return c.JSON(fiber.Map{"status": "index_creation_started"})
