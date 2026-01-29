@@ -5,6 +5,10 @@
 
 VectraDB is a lightweight, cloud-native vector store designed for AI infrastructure and high-throughput embedding workloads. It leverages **Arena Memory Allocation** to bypass Go's Garbage Collection overhead and implements **IVF (Inverted File Index)** for ultra-fast Approximate Nearest Neighbor (ANN) search.
 
+### 🚀 Distributed Mode Available Want to see how this scales? I implemented Multi-Raft Consensus for High Availability and Strong Consistency.
+* **Features:** Leader Election, Log Replication, Fault Tolerance.
+* **Trade-off:** Sacrifices write speed for data safety (CAP Theorem).
+* **View the Code:** [Check out the distributed-consensus branch here.](https://github.com/Rupamthxt/VectraDB/tree/feature/distributed-raft)
 
 ### Architecture
 
