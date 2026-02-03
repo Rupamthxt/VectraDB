@@ -38,6 +38,7 @@ func NewCluster(numShards, dim int, basePath string) (*Cluster, error) {
 	}, nil
 }
 
+// Returns a specific shard based on the hash of the ID
 func (c *Cluster) getShard(id string) *VectraDB {
 	h := fnv.New32a()
 	h.Write([]byte(id))
@@ -48,11 +49,13 @@ func (c *Cluster) getShard(id string) *VectraDB {
 	return c.shards[idx]
 }
 
+// Inserts data into the appropriate shard
 func (c *Cluster) Insert(id string, vector []float32, data any) error {
 	targetShard := c.getShard(id)
 	return targetShard.Insert(id, vector, data)
 }
 
+// Searches across all shards and aggregates results
 func (c *Cluster) Search(query []float32, topK int) []VectroRecord {
 	var wg sync.WaitGroup
 
@@ -84,6 +87,7 @@ func (c *Cluster) Search(query []float32, topK int) []VectroRecord {
 	return allMatches
 }
 
+// Creates index on all shards concurrently
 func (c *Cluster) CreateIndex() {
 	var wg sync.WaitGroup
 	for _, shard := range c.shards {
