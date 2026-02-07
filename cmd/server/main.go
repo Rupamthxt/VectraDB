@@ -6,10 +6,12 @@ import (
 	"log"
 
 	"github.com/hashicorp/raft"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rupamthxt/vectradb/internal/cluster"
 	"github.com/rupamthxt/vectradb/internal/store"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 
 	vectorHttp "github.com/rupamthxt/vectradb/internal/http"
@@ -56,6 +58,7 @@ func main() {
 	app.Use(logger.New())
 
 	handler := vectorHttp.NewHandler(c)
+	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
 
 	api := app.Group("/api/v1")
 	api.Post("/insert", handler.Insert)

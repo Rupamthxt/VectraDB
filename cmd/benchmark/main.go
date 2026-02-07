@@ -14,7 +14,7 @@ import (
 
 const (
 	Dimension    = 128
-	TotalVectors = 50_000 // Keeping it small for Raft ingest speed
+	TotalVectors = 5_000_000 // Keeping it small for Raft ingest speed
 	NumQueries   = 1000
 	NumShards    = 3
 	RaftBasePort = 19000
