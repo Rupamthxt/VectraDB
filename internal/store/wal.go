@@ -17,6 +17,7 @@ type WAL struct {
 	writer *bufio.Writer
 }
 
+// OpenWal creates a new Write Ahead Log and returns a WAL struct
 func OpenWal(path string) (*WAL, error) {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
