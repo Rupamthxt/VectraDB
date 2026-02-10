@@ -41,6 +41,8 @@ func (wal *WAL) WriteEntry(op byte, id string, vector []float32, metadata []byte
 	// Total Payload Size: Op(1) + IDLen(4) + ID + VecLen(4) + Vec + MetaLen(4) + Meta
 	totalPayloadSize := 1 + 4 + idLen + 4 + vectorLen + 4 + metadataLen + 8 + 4
 
+	// TODO : Implement checksum
+
 	// Write Size Header
 	if err := binary.Write(wal.writer, binary.LittleEndian, uint32(totalPayloadSize)); err != nil {
 		return err
