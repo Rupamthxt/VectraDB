@@ -62,8 +62,8 @@ func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
 
 	fmt.Println("Replaying WAL to restore data....")
 	count := 0
-	err = wal.Recover(func(id string, vector []float32, meta []byte) {
-		db.insertInMemory(id, vector)
+	err = wal.Recover(func(id string, vector []float32, meta []byte, loc FileLocation) {
+		db.insertInMemory(id, vector, loc)
 		count++
 	})
 	fmt.Printf("Recovered %d records from WAL\n", count)
@@ -98,8 +98,12 @@ func (db *VectraDB) Insert(id string, vector []float32, data any) error {
 	return nil
 }
 
-func (dv *VectraDB) insertInMemory(id string, vector []float32) error {
-	_, err := dv.arena.Add(vector)
+func (db *VectraDB) insertInMemory(id string, vector []float32, loc FileLocation) error {
+	idx, err := db.arena.Add(vector)
+
+	db.index[id] = idx
+	db.revIndex[idx] = id
+	db.metaLocs[idx] = loc
 	return err
 }
 

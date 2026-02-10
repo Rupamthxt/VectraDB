@@ -31,7 +31,7 @@ func OpenWal(path string) (*WAL, error) {
 
 // WriterEntry saves an operation in the WAL
 
-func (wal *WAL) WriteEntry(op byte, id string, vector []float32, metadata []byte) error {
+func (wal *WAL) WriteEntry(op byte, id string, vector []float32, metadata []byte, loc FileLocation) error {
 	// Calculate sizes
 	idBytes := []byte(id)
 	idLen := uint32(len(idBytes))
@@ -39,7 +39,7 @@ func (wal *WAL) WriteEntry(op byte, id string, vector []float32, metadata []byte
 	metadataLen := uint32(len(metadata))
 
 	// Total Payload Size: Op(1) + IDLen(4) + ID + VecLen(4) + Vec + MetaLen(4) + Meta
-	totalPayloadSize := 1 + 4 + idLen + 4 + vectorLen + 4 + metadataLen
+	totalPayloadSize := 1 + 4 + idLen + 4 + vectorLen + 4 + metadataLen + 8 + 4
 
 	// Write Size Header
 	if err := binary.Write(wal.writer, binary.LittleEndian, uint32(totalPayloadSize)); err != nil {
@@ -66,6 +66,15 @@ func (wal *WAL) WriteEntry(op byte, id string, vector []float32, metadata []byte
 	binary.Write(wal.writer, binary.LittleEndian, metadataLen)
 	wal.writer.Write(metadata)
 
+	// Write Offset (8 bytes)
+	if err := binary.Write(wal.writer, binary.LittleEndian, int64(loc.Offset)); err != nil {
+		return err
+	}
+	// Write Len (4 bytes)
+	if err := binary.Write(wal.writer, binary.LittleEndian, uint32(loc.Length)); err != nil {
+		return err
+	}
+
 	return wal.writer.Flush()
 }
 
@@ -76,7 +85,7 @@ func (w *WAL) Close() error {
 }
 
 // Iterator function type
-type WALIterator func(id string, vector []float32, meta []byte)
+type WALIterator func(id string, vector []float32, meta []byte, loc FileLocation)
 
 func (wal *WAL) Recover(fn WALIterator) error {
 	// Reset file pointer to start
@@ -118,9 +127,17 @@ func (wal *WAL) Recover(fn WALIterator) error {
 		meta := make([]byte, metaLen)
 		reader.Read(meta)
 
+		// Read Offset
+		var offset int64
+		binary.Read(reader, binary.LittleEndian, &offset)
+
+		// Read Length after offset
+		var locLen int32
+		binary.Read(reader, binary.LittleEndian, &locLen)
+
 		// 6. Execute callback (Re-insert into DB)
 		if op == OpInsert {
-			fn(id, vector, meta)
+			fn(id, vector, meta, FileLocation{Offset: offset, Length: locLen})
 		}
 	}
 
