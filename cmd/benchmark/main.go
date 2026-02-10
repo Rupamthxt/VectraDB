@@ -5,111 +5,106 @@ import (
 	"math/rand"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/hashicorp/raft"
-	"github.com/rupamthxt/vectradb/internal/cluster"
 	"github.com/rupamthxt/vectradb/internal/store"
 )
 
 const (
 	Dimension    = 128
-	TotalVectors = 5_000_000 // Keeping it small for Raft ingest speed
-	NumQueries   = 1000
-	NumShards    = 3
-	RaftBasePort = 19000
+	TotalVectors = 5_000_000
+	TotalQueries = 1000
+	K            = 10
+	NumWorkers   = 8 // Concurrency
 )
 
 func main() {
-	fmt.Println("🔥 Starting VectraDB Distributed Benchmark (Raft + IVF)")
-	fmt.Printf("Config: Dim=%d | Items=%d | Shards=%d\n", Dimension, TotalVectors, NumShards)
+	fmt.Printf("🔥 Starting VectraDB Benchmark\n")
+	fmt.Printf("Config: Dim=%d | Items=%d | Queries=%d\n\n", Dimension, TotalVectors, TotalQueries)
 
-	baseDir := "data_bench"
-	os.RemoveAll(baseDir)
-	os.MkdirAll(baseDir, 0755)
-	defer os.RemoveAll(baseDir)
+	os.Mkdir("data_bench", 0755)
+	defer os.RemoveAll("data_bench")
 
-	var shards []store.ShardHandler
-	nodeID := "bench_node"
-
-	fmt.Println("⚡ Initializing Raft Groups...")
-	for i := 0; i < NumShards; i++ {
-		shardDir := fmt.Sprintf("%s/shard_%d", baseDir, i)
-		os.MkdirAll(shardDir, 0755)
-
-		dbPath := fmt.Sprintf("%s/meta.bin", shardDir)
-		db, _ := store.NewVectraDB(Dimension, dbPath)
-
-		raftPort := RaftBasePort + i
-		raftNode, _ := cluster.NewRaftNode(i, nodeID, baseDir, raftPort, db)
-
-		cfg := raft.Configuration{
-			Servers: []raft.Server{
-				{
-					ID:      raft.ServerID(fmt.Sprintf("%s-shard-%d", nodeID, i)),
-					Address: raft.ServerAddress(fmt.Sprintf("127.0.0.1:%d", raftPort)),
-				},
-			},
-		}
-		raftNode.Raft.BootstrapCluster(cfg)
-		shards = append(shards, raftNode)
+	cluster, _ := store.NewCluster(12, Dimension, "data_bench")
+	// --- PHASE 1: INGESTION ---
+	fmt.Println("--- Phase 1: Ingestion ---")
+	vectors := make([][]float32, TotalVectors)
+	ids := make([]string, TotalVectors)
+	for i := 0; i < TotalVectors; i++ {
+		vectors[i] = randomVector(Dimension)
+		ids[i] = fmt.Sprintf("item_%d", i)
 	}
 
-	time.Sleep(3 * time.Second) // Wait for elections
-	c := store.NewCluster(shards)
+	startWrite := time.Now()
+	for i := 0; i < TotalVectors; i++ {
+		_ = cluster.Insert(ids[i], vectors[i], nil)
+	}
+	fmt.Printf("✅ Inserted %d vectors in %v\n", TotalVectors, time.Since(startWrite))
 
-	// --- Phase 1: Ingestion ---
-	fmt.Println("\n--- Phase 1: Ingestion (Raft Log Replication) ---")
-	start := time.Now()
+	// Pre-generate queries
+	queries := make([][]float32, TotalQueries)
+	for i := 0; i < TotalQueries; i++ {
+		queries[i] = randomVector(Dimension)
+	}
 
-	// Use 10 concurrent workers for ingestion
+	// --- PHASE 2: BRUTE FORCE SEARCH ---
+	fmt.Println("\n--- Phase 2: Brute Force Search ---")
+	startRead := time.Now()
+	runConcurrentSearch(cluster, queries)
+	durationRead := time.Since(startRead)
+	fmt.Printf("🚀 Brute Force QPS: %.2f\n", float64(TotalQueries)/durationRead.Seconds())
+
+	// --- PHASE 3: TRAINING IVF ---
+	fmt.Println("\n--- Phase 3: Training IVF Index ---")
+	startTrain := time.Now()
+	cluster.CreateIndex() // <--- This triggers the K-Means Clustering
+	fmt.Printf("✅ Index Trained in %v\n", time.Since(startTrain))
+
+	// --- PHASE 4: IVF SEARCH ---
+	fmt.Println("\n--- Phase 4: IVF (Approximate) Search ---")
+	startIVF := time.Now()
+	runConcurrentSearch(cluster, queries)
+	durationIVF := time.Since(startIVF)
+	fmt.Printf("🚀 IVF QPS: %.2f\n", float64(TotalQueries)/durationIVF.Seconds())
+
+	speedup := (float64(TotalQueries) / durationIVF.Seconds()) / (float64(TotalQueries) / durationRead.Seconds())
+	fmt.Printf("\n⚡ Speedup Factor: %.2fx\n", speedup)
+}
+
+func runConcurrentSearch(cluster *store.Cluster, queries [][]float32) {
 	var wg sync.WaitGroup
-	workers := 10
-	batch := TotalVectors / workers
-	for w := 0; w < workers; w++ {
+	chunkSize := len(queries) / NumWorkers
+
+	// Atomic counter for total hits
+	var totalHits int64
+
+	for w := 0; w < NumWorkers; w++ {
 		wg.Add(1)
-		go func(idx int) {
+		go func(offset int) {
 			defer wg.Done()
-			offset := idx * batch
-			for i := 0; i < batch; i++ {
-				c.Insert(fmt.Sprintf("vec-%d", offset+i), randomVector(Dimension), nil)
+			localHits := 0
+			for i := 0; i < chunkSize; i++ {
+				results := cluster.Search(queries[offset+i], K)
+				if len(results) > 0 {
+					localHits++
+				}
 			}
-		}(w)
+			atomic.AddInt64(&totalHits, int64(localHits))
+		}(w * chunkSize)
 	}
 	wg.Wait()
-	fmt.Printf("✅ Ingestion Complete: %.2fs\n", time.Since(start).Seconds())
 
-	// --- Phase 2: Training ---
-	fmt.Println("\n--- Phase 2: Training Distributed IVF Index ---")
-	startTrain := time.Now()
-
-	// This triggers parallel training on all shards
-	c.TrainIndex()
-
-	fmt.Printf("✅ Index Trained in %s\n", time.Since(startTrain))
-
-	// --- Phase 3: Search ---
-	fmt.Println("\n--- Phase 3: Search (Distributed IVF) ---")
-	startSearch := time.Now()
-	wgSearch := sync.WaitGroup{}
-	wgSearch.Add(NumQueries)
-
-	for i := 0; i < NumQueries; i++ {
-		go func() {
-			defer wgSearch.Done()
-			c.Search(randomVector(Dimension), 10)
-		}()
+	// Print hit rate only once (hacky but works for now)
+	if totalHits < int64(len(queries)) {
+		fmt.Printf("⚠️ WARNING: Low Hit Rate! Found results for %d/%d queries.\n", totalHits, len(queries))
 	}
-	wgSearch.Wait()
-
-	qps := float64(NumQueries) / time.Since(startSearch).Seconds()
-	fmt.Printf("🚀 Distributed IVF QPS: %.2f\n", qps)
 }
 
 func randomVector(dim int) []float32 {
 	vec := make([]float32, dim)
 	for i := 0; i < dim; i++ {
-		vec[i] = rand.Float32()
+		vec[i] = rand.Float32()*2 - 1 // Random float between -1 and 1
 	}
 	return vec
 }

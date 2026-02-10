@@ -1,30 +1,45 @@
 package store
 
 import (
+	"fmt"
 	"hash/fnv"
+	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 )
 
-type ShardHandler interface {
-	Insert(id string, vector []float32, data interface{}) error
-	Search(query []float32, topK int) []VectroRecord
-	TrainIndex() error
-}
-
 type Cluster struct {
-	shards    []ShardHandler
+	shards    []*VectraDB
 	numShards int
 }
 
-func NewCluster(shards []ShardHandler) *Cluster {
+func NewCluster(numShards, dim int, basePath string) (*Cluster, error) {
+	shards := make([]*VectraDB, numShards)
+
+	for i := range numShards {
+		shardPath := filepath.Join(basePath, fmt.Sprintf("shard_%d", i))
+		if err := os.MkdirAll(shardPath, 0755); err != nil {
+			return nil, err
+		}
+
+		metaPath := filepath.Join(shardPath, "meta.bin")
+
+		db, err := NewVectraDB(dim, metaPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to init shard %d: %w", i, err)
+		}
+		shards[i] = db
+	}
+
 	return &Cluster{
 		shards:    shards,
-		numShards: len(shards),
-	}
+		numShards: numShards,
+	}, nil
 }
 
-func (c *Cluster) getShard(id string) ShardHandler {
+// Returns a specific shard based on the hash of the ID
+func (c *Cluster) getShard(id string) *VectraDB {
 	h := fnv.New32a()
 	h.Write([]byte(id))
 	idx := int(h.Sum32()) % c.numShards
@@ -48,7 +63,7 @@ func (c *Cluster) Search(query []float32, topK int) []VectroRecord {
 
 	for _, shard := range c.shards {
 		wg.Add(1)
-		go func(s ShardHandler) {
+		go func(s *VectraDB) {
 			defer wg.Done()
 			resultCh <- s.Search(query, topK)
 		}(shard)
@@ -77,28 +92,11 @@ func (c *Cluster) CreateIndex() {
 	var wg sync.WaitGroup
 	for _, shard := range c.shards {
 		wg.Add(1)
-		go func(s ShardHandler) {
+		go func(s *VectraDB) {
 			defer wg.Done()
+			s.AutoTuneIndex()
+			s.CreateIndex()
 		}(shard)
 	}
 	wg.Wait()
-}
-
-func (c *Cluster) TrainIndex() {
-	type result struct {
-		err error
-	}
-	ch := make(chan result, c.numShards)
-
-	for _, shard := range c.shards {
-		go func(s ShardHandler) {
-			err := s.TrainIndex()
-			ch <- result{err: err}
-		}(shard)
-	}
-
-	// Wait for all shards to finish
-	for i := 0; i < c.numShards; i++ {
-		<-ch
-	}
 }

@@ -1,8 +1,0 @@
-global:
-  scrape_interval: 5s # Scrape often for real-time demos
-
-scrape_configs:
-  - job_name: 'vectradb'
-    static_configs:
-      - targets: ['172.17.0.1:8080']
-        # Add all your Raft node ports here!
