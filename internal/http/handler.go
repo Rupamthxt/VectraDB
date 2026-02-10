@@ -2,8 +2,10 @@ package http
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/rupamthxt/vectradb/internal/metrics"
 	"github.com/rupamthxt/vectradb/internal/store"
 )
 
@@ -16,6 +18,10 @@ func NewHandler(cluster *store.Cluster) *Handler {
 }
 
 func (h *Handler) Insert(c *fiber.Ctx) error {
+	// Start Timer
+	start := time.Now()
+	metrics.InsertRequests.Inc() // +1 to Counter
+
 	var req InsertRequest
 
 	if err := c.BodyParser(&req); err != nil {
@@ -27,14 +33,22 @@ func (h *Handler) Insert(c *fiber.Ctx) error {
 	}
 
 	err := h.cluster.Insert(req.ID, req.Vector, req.Data)
+
+	// Record Duration
+	duration := time.Since(start).Seconds()
+	metrics.InsertDuration.Observe(duration)
+
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-
+	// Update Vector Count
+	metrics.TotalVectors.Inc()
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "data inserted successfully"})
 }
 
 func (h *Handler) Search(c *fiber.Ctx) error {
+	start := time.Now()
+	metrics.SearchRequests.Inc()
 	var req SearchRequest
 
 	if err := c.BodyParser(&req); err != nil {
@@ -50,6 +64,9 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 	}
 
 	results := h.cluster.Search(req.Vector, req.TopK)
+
+	duration := time.Since(start).Seconds()
+	metrics.SearchDuration.Observe(duration)
 
 	responseItems := make([]SearchResult, 0, len(results))
 	for _, res := range results {
@@ -68,13 +85,6 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 	return c.JSON(SearchResponse{Results: responseItems})
 }
 
-//	func (h *Handler) SaveToDisk(c *fiber.Ctx) error {
-//		err := h.cluster.Write("./vectradb.snap")
-//		if err != nil {
-//			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
-//		}
-//		return c.JSON(fiber.Map{"status": "snapshot_saved", "path": "./vectradb.snap"})
-//	}
 func (h *Handler) CreateIndex(c *fiber.Ctx) error {
 	go h.cluster.CreateIndex()
 	return c.JSON(fiber.Map{"status": "index_creation_started"})

@@ -33,6 +33,8 @@ type VectraDB struct {
 	dim int
 
 	ivf *IVFIndex
+
+	wal *WAL
 }
 
 func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
@@ -41,8 +43,12 @@ func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to init disk store at %s: %w", storagePath, err)
 	}
+	wal, err := OpenWal(storagePath)
+	if err != nil {
+		return nil, err
+	}
 
-	return &VectraDB{
+	db := &VectraDB{
 		index:    make(map[string]uint32),
 		revIndex: make([]string, 10000),
 		arena:    NewVectorArena(dim),
@@ -51,7 +57,18 @@ func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
 		disk:     ds,
 		dim:      dim,
 		ivf:      NewIVFIndex(2000),
-	}, nil
+		wal:      wal,
+	}
+
+	fmt.Println("Replaying WAL to restore data....")
+	count := 0
+	err = wal.Recover(func(id string, vector []float32, meta []byte, loc FileLocation) {
+		db.insertInMemory(id, vector, loc)
+		count++
+	})
+	fmt.Printf("Recovered %d records from WAL\n", count)
+
+	return db, nil
 }
 
 func (db *VectraDB) Insert(id string, vector []float32, data any) error {
@@ -79,6 +96,15 @@ func (db *VectraDB) Insert(id string, vector []float32, data any) error {
 	db.metaLocs[idx] = loc
 
 	return nil
+}
+
+func (db *VectraDB) insertInMemory(id string, vector []float32, loc FileLocation) error {
+	idx, err := db.arena.Add(vector)
+
+	db.index[id] = idx
+	db.revIndex[idx] = id
+	db.metaLocs[idx] = loc
+	return err
 }
 
 func (db *VectraDB) Get(id string) ([]float32, []byte, bool) {
