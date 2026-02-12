@@ -2,7 +2,9 @@ package store
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
+	"hash/crc32"
 	"io"
 	"os"
 )
@@ -46,34 +48,64 @@ func (wal *WAL) WriteEntry(op byte, id string, vector []float32, metadata []byte
 		return err
 	}
 
-	// Write operation type
-	if err := wal.writer.WriteByte(op); err != nil {
-		return err
-	}
+	buf := new(bytes.Buffer)
 
-	// Write ID
-	binary.Write(wal.writer, binary.LittleEndian, idLen)
-	wal.writer.Write(idBytes)
+	buf.WriteByte(op)
+	binary.Write(buf, binary.LittleEndian, uint32(len(idBytes)))
+	buf.Write(idBytes)
 
-	// Write Vector (Convert float32 -> bytes)
-	binary.Write(wal.writer, binary.LittleEndian, vectorLen)
+	binary.Write(buf, binary.LittleEndian, uint32(len(vector)*4))
 	for _, v := range vector {
-		// Optimization: In prod, use unsafe.Slice or math.Float32bits to bulk write
-		binary.Write(wal.writer, binary.LittleEndian, v)
+		binary.Write(buf, binary.LittleEndian, v)
 	}
 
-	// Write Metadata
-	binary.Write(wal.writer, binary.LittleEndian, metadataLen)
-	wal.writer.Write(metadata)
+	binary.Write(buf, binary.LittleEndian, uint32(len(metadata)))
+	binary.Write(buf, binary.LittleEndian, metadata)
 
-	// Write Offset (8 bytes)
-	if err := binary.Write(wal.writer, binary.LittleEndian, int64(loc.Offset)); err != nil {
+	binary.Write(buf, binary.LittleEndian, loc.Offset)
+	binary.Write(buf, binary.LittleEndian, loc.Length)
+
+	checksum := crc32.ChecksumIEEE(buf.Bytes())
+
+	if err := binary.Write(wal.writer, binary.LittleEndian, uint32(buf.Len()+4)); err != nil {
 		return err
 	}
-	// Write Len (4 bytes)
-	if err := binary.Write(wal.writer, binary.LittleEndian, uint32(loc.Length)); err != nil {
+	if err := binary.Write(wal.writer, binary.LittleEndian, checksum); err != nil {
 		return err
 	}
+
+	wal.writer.Write(buf.Bytes())
+
+	// // Write operation type
+	// if err := wal.writer.WriteByte(op); err != nil {
+	// 	return err
+	// }
+
+	// // Write ID
+	// binary.Write(wal.writer, binary.LittleEndian, idLen)
+	// wal.writer.Write(idBytes)
+
+	// // Write Vector (Convert float32 -> bytes)
+	// binary.Write(wal.writer, binary.LittleEndian, vectorLen)
+	// for _, v := range vector {
+	// 	// Optimization: In prod, use unsafe.Slice or math.Float32bits to bulk write
+	// 	binary.Write(wal.writer, binary.LittleEndian, v)
+	// }
+
+	// // Write Metadata
+	// binary.Write(wal.writer, binary.LittleEndian, metadataLen)
+	// wal.writer.Write(metadata)
+
+	// // Write Offset (8 bytes)
+	// if err := binary.Write(wal.writer, binary.LittleEndian, int64(loc.Offset)); err != nil {
+	// 	return err
+	// }
+	// // Write Len (4 bytes)
+	// if err := binary.Write(wal.writer, binary.LittleEndian, uint32(loc.Length)); err != nil {
+	// 	return err
+	// }
+
+	// checksum := crc32.ChecksumIEEE([]byte(wal.writer.Flush().Error()))
 
 	return wal.writer.Flush()
 }
@@ -134,6 +166,9 @@ func (wal *WAL) Recover(fn WALIterator) error {
 		// Read Length after offset
 		var locLen int32
 		binary.Read(reader, binary.LittleEndian, &locLen)
+
+		var storedChecksum uint32
+		binary.Read(reader, binary.LittleEndian, &storedChecksum)
 
 		// 6. Execute callback (Re-insert into DB)
 		if op == OpInsert {
