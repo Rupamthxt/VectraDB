@@ -34,6 +34,8 @@ type VectraDB struct {
 
 	ivf *IVFIndex
 
+	hnsw *HNSWIndex
+
 	wal *WAL
 }
 
@@ -57,6 +59,7 @@ func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
 		disk:     ds,
 		dim:      dim,
 		ivf:      NewIVFIndex(2000),
+		hnsw: 	  NewHNSWIndex(),	
 		wal:      wal,
 	}
 
