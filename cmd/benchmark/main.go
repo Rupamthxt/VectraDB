@@ -14,7 +14,7 @@ import (
 
 const (
 	Dimension    = 128
-	TotalVectors = 5_000_000 // Keeping it small for Raft ingest speed
+	TotalVectors = 5_000_0 // Keeping it small for Raft ingest speed
 	NumQueries   = 1000
 	NumShards    = 3
 	RaftBasePort = 19000
@@ -79,17 +79,8 @@ func main() {
 	wg.Wait()
 	fmt.Printf("✅ Ingestion Complete: %.2fs\n", time.Since(start).Seconds())
 
-	// --- Phase 2: Training ---
-	fmt.Println("\n--- Phase 2: Training Distributed IVF Index ---")
-	startTrain := time.Now()
-
-	// This triggers parallel training on all shards
-	c.TrainIndex()
-
-	fmt.Printf("✅ Index Trained in %s\n", time.Since(startTrain))
-
-	// --- Phase 3: Search ---
-	fmt.Println("\n--- Phase 3: Search (Distributed IVF) ---")
+	// --- Phase 2: Search ---
+	fmt.Println("\n--- Phase 2: Search (HNSW) ---")
 	startSearch := time.Now()
 	wgSearch := sync.WaitGroup{}
 	wgSearch.Add(NumQueries)
@@ -103,7 +94,7 @@ func main() {
 	wgSearch.Wait()
 
 	qps := float64(NumQueries) / time.Since(startSearch).Seconds()
-	fmt.Printf("🚀 Distributed IVF QPS: %.2f\n", qps)
+	fmt.Printf("🚀 HNSW QPS: %.2f\n", qps)
 }
 
 func randomVector(dim int) []float32 {

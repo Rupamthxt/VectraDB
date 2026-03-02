@@ -64,9 +64,6 @@ func main() {
 	api.Post("/insert", handler.Insert)
 	api.Post("/search", handler.Search)
 
-	admin := app.Group("/admin")
-	admin.Post("/index", handler.CreateIndex)
-
 	log.Println("VectraDB listening on port : 8080")
 	log.Fatal(app.Listen(":8080"))
 }

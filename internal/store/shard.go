@@ -9,7 +9,6 @@ import (
 type ShardHandler interface {
 	Insert(id string, vector []float32, data interface{}) error
 	Search(query []float32, topK int) []VectroRecord
-	TrainIndex() error
 }
 
 type Cluster struct {
@@ -68,34 +67,4 @@ func (c *Cluster) Search(query []float32, topK int) []VectroRecord {
 		return allMatches[:topK]
 	}
 	return allMatches
-}
-
-func (c *Cluster) CreateIndex() {
-	var wg sync.WaitGroup
-	for _, shard := range c.shards {
-		wg.Add(1)
-		go func(s ShardHandler) {
-			defer wg.Done()
-		}(shard)
-	}
-	wg.Wait()
-}
-
-func (c *Cluster) TrainIndex() {
-	type result struct {
-		err error
-	}
-	ch := make(chan result, c.numShards)
-
-	for _, shard := range c.shards {
-		go func(s ShardHandler) {
-			err := s.TrainIndex()
-			ch <- result{err: err}
-		}(shard)
-	}
-
-	// Wait for all shards to finish
-	for i := 0; i < c.numShards; i++ {
-		<-ch
-	}
 }

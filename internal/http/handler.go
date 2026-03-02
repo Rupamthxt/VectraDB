@@ -85,7 +85,7 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 	return c.JSON(SearchResponse{Results: responseItems})
 }
 
-func (h *Handler) CreateIndex(c *fiber.Ctx) error {
-	go h.cluster.CreateIndex()
-	return c.JSON(fiber.Map{"status": "index_creation_started"})
-}
+// func (h *Handler) CreateIndex(c *fiber.Ctx) error {
+// 	go h.cluster.CreateIndex()
+// 	return c.JSON(fiber.Map{"status": "index_creation_started"})
+// }

@@ -105,8 +105,3 @@ func (rn *RaftNode) Insert(id string, vector []float32, data interface{}) error 
 func (rn *RaftNode) Search(query []float32, topK int) []store.VectroRecord {
 	return rn.DB.Search(query, topK)
 }
-
-func (rn *RaftNode) TrainIndex() error {
-	rn.DB.CreateIndex()
-	return nil
-}
