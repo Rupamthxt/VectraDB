@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
+	"github.com/rupamthxt/vectradb/internal/metrics"
 	"github.com/rupamthxt/vectradb/internal/store"
 )
 
@@ -63,11 +64,26 @@ func NewRaftNode(shardID int, nodeID string, baseDir string, raftPort int, db *s
 		return nil, err
 	}
 
-	return &RaftNode{
+	rn := &RaftNode{
 		Raft: raftNode,
 		FSM:  fsm,
 		DB:   db,
-	}, nil
+	}
+
+	// periodically reflect raft state in telemetry gauge
+	go func() {
+		prev := -1
+		for {
+			st := int(rn.Raft.State())
+			if st != prev {
+				metrics.RaftState.Set(float64(st))
+				prev = st
+			}
+			time.Sleep(time.Second)
+		}
+	}()
+
+	return rn, nil
 }
 
 func (rn *RaftNode) Insert(id string, vector []float32, data interface{}) error {
