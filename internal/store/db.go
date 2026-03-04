@@ -3,10 +3,11 @@ package store
 import (
 	"encoding/json"
 	"fmt"
-	"math"
-	"sort"
+
+	// "math"
+
+	// "sort"
 	"sync"
-	"unsafe"
 )
 
 type VectroRecord struct {
@@ -24,15 +25,15 @@ type VectraDB struct {
 	arena *VectorArena
 
 	// Cold Path Storage
-	// metadata map[uint32][]byte
-
 	metaLocs map[uint32]FileLocation
 
 	disk *DiskStore
 
 	dim int
 
-	ivf *IVFIndex
+	wal *WAL
+
+	hnsw *HNSWIndex
 }
 
 func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
@@ -41,17 +42,32 @@ func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to init disk store at %s: %w", storagePath, err)
 	}
+	wal, err := OpenWal(storagePath)
+	if err != nil {
+		return nil, err
+	}
+	localArena := NewVectorArena(dim)
 
-	return &VectraDB{
+	db := &VectraDB{
 		index:    make(map[string]uint32),
 		revIndex: make([]string, 10000),
-		arena:    NewVectorArena(dim),
-		// metadata: make(map[uint32][]byte),
+		arena:    localArena,
 		metaLocs: make(map[uint32]FileLocation),
 		disk:     ds,
 		dim:      dim,
-		ivf:      NewIVFIndex(2000),
-	}, nil
+		wal:      wal,
+		hnsw:     NewHNSWIndex(localArena),
+	}
+
+	fmt.Println("Replaying WAL to restore data....")
+	count := 0
+	err = wal.Recover(func(id string, vector []float32, meta []byte, loc FileLocation) {
+		db.insertInMemory(id, vector, loc)
+		count++
+	})
+	fmt.Printf("Recovered %d records from WAL\n", count)
+
+	return db, nil
 }
 
 func (db *VectraDB) Insert(id string, vector []float32, data any) error {
@@ -78,7 +94,18 @@ func (db *VectraDB) Insert(id string, vector []float32, data any) error {
 
 	db.metaLocs[idx] = loc
 
+	db.hnsw.Add(vector, id, idx)
+
 	return nil
+}
+
+func (db *VectraDB) insertInMemory(id string, vector []float32, loc FileLocation) error {
+	idx, err := db.arena.Add(vector)
+
+	db.index[id] = idx
+	db.revIndex[idx] = id
+	db.metaLocs[idx] = loc
+	return err
 }
 
 func (db *VectraDB) Get(id string) ([]float32, []byte, bool) {
@@ -103,144 +130,20 @@ func (db *VectraDB) Search(query []float32, topK int) []VectroRecord {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 
-	if db.ivf.IsTrained {
-		return db.searchIVF(query, topK)
-	}
-
-	return db.searchBruteForce(query, topK)
-}
-
-func (db *VectraDB) searchBruteForce(query []float32, topK int) []VectroRecord {
-	heap := make(MinHeap, 0, topK)
-
-	for pages, pageBytes := range db.arena.pages {
-		bytesPerVector := db.arena.dim * 4
-		vectorCount := len(pageBytes) / bytesPerVector
-
-		for i := 0; i < vectorCount; i++ {
-			start := i * bytesPerVector
-
-			ptr := unsafe.Pointer(&pageBytes[start])
-			targetVector := unsafe.Slice((*float32)(ptr), db.arena.dim)
-
-			score := cosineSimilarity(query, targetVector)
-
-			globalId := uint32(pages*db.arena.vectorsPerPage + i)
-
-			if len(heap) < topK {
-				heap.Push(Match{Index: globalId, Score: score})
-			} else if score > heap[0].Score {
-				heap.Replace(Match{Index: globalId, Score: score})
-			}
-		}
-	}
-
-	return db.finalizeResults(heap)
-}
-
-func (db *VectraDB) searchIVF(query []float32, topK int) []VectroRecord {
-
-	bestCluster := 0
-	bestScore := float32(-1.0)
-
-	for i, centroid := range db.ivf.Centroids {
-		score := cosineSimilarity(query, centroid)
-		if score > bestScore {
-			bestScore = score
-			bestCluster = i
-		}
-	}
-
-	candidatesIdx := db.ivf.Buckets[bestCluster]
-
-	heap := make(MinHeap, 0, topK)
-
-	for _, idx := range candidatesIdx {
-		vec, _ := db.arena.Get(idx)
-		score := cosineSimilarity(query, vec)
-
-		if len(heap) < topK {
-			heap.Push(Match{Index: idx, Score: score})
-		} else if score > heap[0].Score {
-			heap.Replace(Match{Index: idx, Score: score})
-		}
-	}
-
-	return db.finalizeResults(heap)
-}
-
-func (db *VectraDB) finalizeResults(heap MinHeap) []VectroRecord {
-	sort.Slice(heap, func(i, j int) bool {
-		return heap[i].Score > heap[j].Score
-	})
-
-	results := make([]VectroRecord, 0, len(heap))
-
-	for _, match := range heap {
-		internalIdx := match.Index
-
-		if internalIdx >= uint32(len(db.revIndex)) {
-			continue
-		}
-
-		loc, exists := db.metaLocs[internalIdx]
-		var metadata []byte
-		if exists {
-			metadata, _ = db.disk.Read(loc)
-		}
-
-		results = append(results, VectroRecord{
-			ID:    db.revIndex[internalIdx],
-			Score: match.Score,
-			Data:  metadata,
-		})
-	}
-
-	return results
-}
-
-func cosineSimilarity(a, b []float32) float32 {
-	var dot, mag1, mag2 float32
-	for i := range a {
-		dot += a[i] * b[i]
-		mag1 += a[i] * a[i]
-		mag2 += b[i] * b[i]
-	}
-	if mag1 == 0 || mag2 == 0 {
-		return 0
-	}
-	return dot / (float32(math.Sqrt(float64(mag1)))) * float32(math.Sqrt(float64(mag2)))
+	return db.hnsw.Search(query, topK)
 
 }
 
-func (db *VectraDB) AutoTuneIndex() {
-	db.mu.Lock()
-	defer db.mu.Unlock()
+// func cosineSimilarity(a, b []float32) float32 {
+// 	var dot, mag1, mag2 float32
+// 	for i := range a {
+// 		dot += a[i] * b[i]
+// 		mag1 += a[i] * a[i]
+// 		mag2 += b[i] * b[i]
+// 	}
+// 	if mag1 == 0 || mag2 == 0 {
+// 		return 0
+// 	}
+// 	return dot / (float32(math.Sqrt(float64(mag1)))) * float32(math.Sqrt(float64(mag2)))
 
-	count := float64(db.arena.totalVectors)
-	if count == 0 {
-		return
-	}
-
-	// Calculate Sqrt(N)
-	targetClusters := int(math.Sqrt(count))
-
-	// Clamp values (don't go too small or too crazy big)
-	if targetClusters < 10 {
-		targetClusters = 10
-	}
-	if targetClusters > 5000 {
-		targetClusters = 5000
-	}
-
-	fmt.Printf("Auto-Tuning: Recreating IVF with %d clusters for %d vectors\n", targetClusters, int(count))
-	db.ivf = NewIVFIndex(targetClusters)
-}
-
-func (db *VectraDB) CreateIndex() {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-
-	// Train with 10 iterations
-	db.ivf.Train(db.arena, 10)
-}
+// }
