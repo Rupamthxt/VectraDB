@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	InsertCount = 5_000  // Enough to see the graph climb
-	SearchCount = 10_000 // High volume to test read speed
+	InsertCount = 50_000 // Enough to see the graph climb
+	SearchCount = 1_000  // High volume to test read speed
 	Concurrency = 10
 
-	BaseURL = "http://localhost:8080/api/v1"
+	BaseURL = "http://127.0.0.1:8080/api/v1"
 )
 
 // Data Structures matching your Server API
@@ -89,7 +89,13 @@ func runTest(name string, totalOps int, opFunc func(workerID, i int) error) {
 
 // Helper to send HTTP requests
 func sendRequest(method, endpoint string, body interface{}) error {
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 100,
+		},
+	}
 
 	jsonBody, _ := json.Marshal(body)
 	req, _ := http.NewRequest(method, BaseURL+endpoint, bytes.NewBuffer(jsonBody))

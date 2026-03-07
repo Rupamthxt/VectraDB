@@ -22,7 +22,7 @@ const SnapshotPath = "./vectradb.snap"
 func main() {
 	fmt.Println("Initializing VectraDB (High-Perf) mode...")
 
-	bootstrap := flag.Bool("bootstrap", false, "Bootstrap the cluster (Leader only)")
+	bootstrap := flag.Bool("bootstrap", true, "Bootstrap the cluster (Leader only)")
 
 	flag.Parse()
 
@@ -34,9 +34,15 @@ func main() {
 
 	for i := range numShards {
 		dbPath := fmt.Sprintf("data/%s/shard_%d/meta.bin", nodeID, i)
-		db, _ := store.NewVectraDB(128, dbPath)
+		db, err := store.NewVectraDB(128, dbPath)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-		raftNode, _ := cluster.NewRaftNode(i, nodeID, "data/"+nodeID, basePort+i, db)
+		raftNode, err := cluster.NewRaftNode(i, nodeID, "data/"+nodeID, basePort+i, db)
+		if err != nil {
+			log.Fatal(err)
+		}
 
 		if *bootstrap {
 			configuration := raft.Configuration{

@@ -24,7 +24,7 @@ const (
 
 var (
 	dimension    = 128
-	totalVectors = 5_000_0 // default, overridden via flags
+	totalVectors = 5_000 // default, overridden via flags
 	numQueries   = 1000
 	numShards    = 3
 	metricsPort  = 9091

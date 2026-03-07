@@ -101,6 +101,12 @@ func (h *HNSWIndex) Add(vector []float32, id string, idx uint32) {
 	h.Lock()
 	defer h.Unlock()
 
+	// If this vector ID already exists in the graph,
+	// do not insert it again.
+	if _, exists := h.Nodes[id]; exists {
+		return
+	}
+
 	// Create New Node with random level
 	level := h.randomLevel()
 	newNode := &HNSWNode{
