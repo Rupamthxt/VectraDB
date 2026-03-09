@@ -22,7 +22,7 @@ const SnapshotPath = "./vectradb.snap"
 func main() {
 	fmt.Println("Initializing VectraDB (High-Perf) mode...")
 
-	bootstrap := flag.Bool("bootstrap", true, "Bootstrap the cluster (Leader only)")
+	bootstrap := flag.Bool("bootstrap", false, "Bootstrap the cluster (Leader only)")
 
 	flag.Parse()
 

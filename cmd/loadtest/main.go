@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	InsertCount = 50_000 // Enough to see the graph climb
-	SearchCount = 1_000  // High volume to test read speed
+	InsertCount = 5_000 // Enough to see the graph climb
+	SearchCount = 1_000 // High volume to test read speed
 	Concurrency = 10
 
-	BaseURL = "http://127.0.0.1:8080/api/v1"
+	BaseURL = "http://localhost:8080/api/v1"
 )
 
 // Data Structures matching your Server API

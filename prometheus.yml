@@ -1,9 +1,4 @@
 scrape_configs:
-  - job_name: vectradb_bench
+  - job_name: vectradb
     static_configs:
-      # When Prometheus runs on the host this can be "localhost:9092".
-      # If running inside Docker use one of the following addresses:
-      #   172.17.0.1:9092      # default Linux bridge
-      #   host.docker.internal:9092  # Docker Desktop
-      - targets: ['172.17.0.1:9092']
-      - targets: ['localhost:9092']
+      - targets: ['vectradb:8080']
