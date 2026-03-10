@@ -1,3 +1,5 @@
+🟢 Open to work: I am a backend Systems Engineer currently looking for a full-time role in deep infrastructure, database internals, or low-latency systems. I specialize in Go, memory optimization (bypassing GC), and bare-metal hardware. If your team is solving hard throughput problems, let's talk: rupamthxt@gmail.com | [LinkedIn](https://www.linkedin.com/in/rupam-saha-4b04691b1/)
+
 # VectraDB ⚡
 
 > **High-Performance, In-Memory Vector Database written in Go.**
