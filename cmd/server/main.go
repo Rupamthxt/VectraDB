@@ -33,7 +33,7 @@ func main() {
 	var shards []store.ShardHandler
 
 	for i := range numShards {
-		dbPath := fmt.Sprintf("data/%s/shard_%d/meta.bin", nodeID, i)
+		dbPath := fmt.Sprintf("app/data/%s/shard_%d", nodeID, i)
 		db, err := store.NewVectraDB(128, dbPath)
 		if err != nil {
 			log.Fatal(err)

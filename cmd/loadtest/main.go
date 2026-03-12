@@ -12,7 +12,7 @@ import (
 
 const (
 	InsertCount = 5_000 // Enough to see the graph climb
-	SearchCount = 1_000 // High volume to test read speed
+	SearchCount = 0     // High volume to test read speed
 	Concurrency = 10
 
 	BaseURL = "http://localhost:8080/api/v1"

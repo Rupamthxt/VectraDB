@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
   vectradb:
     build: .
     ports:
       - "8080:8080"
     volumes:
-      - ./data:/app/data
+      - vectra_storage:/app/data
     command: ["./vectradb", "-bootstrap=true"]
 
   prometheus:
@@ -22,3 +20,5 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--storage.tsdb.retention.time=200h'
       - '--web.enable-lifecycle'
+volumes:
+  vectra_storage:

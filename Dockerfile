@@ -13,7 +13,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o vectradb ./cmd/server/
 FROM alpine:latest
 
 
-RUN mkdir -p data
+RUN mkdir -p /app/data
 
 COPY --from=builder /app/vectradb .
 

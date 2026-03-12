@@ -49,9 +49,9 @@ func main() {
 	fmt.Printf("Config: Dim=%d | Items=%d | Shards=%d\n", dimension, totalVectors, numShards)
 
 	baseDir := "data_bench"
-	os.RemoveAll(baseDir)
+	// os.RemoveAll(baseDir)
 	os.MkdirAll(baseDir, 0755)
-	defer os.RemoveAll(baseDir)
+	// defer os.RemoveAll(baseDir)
 
 	var shards []store.ShardHandler
 	nodeID := "bench_node"
@@ -72,7 +72,7 @@ func main() {
 		shardDir := fmt.Sprintf("%s/shard_%d", baseDir, i)
 		os.MkdirAll(shardDir, 0755)
 
-		dbPath := fmt.Sprintf("%s/meta.bin", shardDir)
+		dbPath := fmt.Sprintf("%s", shardDir)
 		db, _ := store.NewVectraDB(dimension, dbPath)
 
 		raftPort := RaftBasePort + i
@@ -117,6 +117,8 @@ func main() {
 	}
 	wg.Wait()
 	fmt.Printf("✅ Ingestion Complete: %.2fs\n", time.Since(start).Seconds())
+	iqps := float64(totalVectors) / time.Since(start).Seconds()
+	fmt.Printf("🚀 Ingestion QPS: %.2f\n", iqps)
 
 	// --- Phase 2: Search ---
 	fmt.Println("\n--- Phase 2: Search (HNSW) ---")
@@ -139,8 +141,8 @@ func main() {
 	fmt.Printf("🚀 HNSW QPS: %.2f\n", qps)
 
 	// keep process running so prometheus can scrape metrics after benchmark completes
-	fmt.Println("🔋 benchmark complete – metrics remain available at :9091/metrics until you stop the program")
-	select {}
+	// fmt.Println("🔋 benchmark complete – metrics remain available at :9091/metrics until you stop the program")
+	// select{}
 }
 
 func randomVector(dim int) []float32 {

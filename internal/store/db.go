@@ -38,11 +38,11 @@ type VectraDB struct {
 
 func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
 
-	ds, err := NewDiskStore(storagePath)
+	ds, err := NewDiskStore(fmt.Sprintf("%s/data.bin", storagePath))
 	if err != nil {
 		return nil, fmt.Errorf("Failed to init disk store at %s: %w", storagePath, err)
 	}
-	wal, err := OpenWal(storagePath)
+	wal, err := OpenWal(fmt.Sprintf("%s/wal.bin", storagePath))
 	if err != nil {
 		return nil, err
 	}
