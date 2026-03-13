@@ -28,11 +28,11 @@ type RaftNode struct {
 func NewRaftNode(shardID int, nodeID string, baseDir string, raftPort int, db *store.VectraDB) (*RaftNode, error) {
 	fsm := NewFSM(db)
 
-	raftDir := filepath.Join(baseDir, fmt.Sprintf("shard_%d", shardID), "raft")
+	raftDir := filepath.Join(baseDir, fmt.Sprintf("shard_%d", shardID), nodeID, "raft")
 	os.MkdirAll(raftDir, 0755)
 
 	config := raft.DefaultConfig()
-	config.LocalID = raft.ServerID(fmt.Sprintf("%s-shard-%d", nodeID, shardID))
+	config.LocalID = raft.ServerID(nodeID)
 
 	addr := fmt.Sprintf("127.0.0.1:%d", raftPort)
 	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)

@@ -89,6 +89,11 @@ func (db *VectraDB) Insert(id string, vector []float32, data any) error {
 		return err
 	}
 
+	err = db.wal.WriteEntry(OpInsert, id, vector, bytes, loc)
+	if err != nil {
+		return err
+	}
+
 	db.index[id] = idx
 	db.revIndex = append(db.revIndex, id)
 

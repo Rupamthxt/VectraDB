@@ -3,8 +3,10 @@ package store
 import (
 	"bufio"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
+	"sync"
 )
 
 const (
@@ -15,10 +17,12 @@ const (
 type WAL struct {
 	file   *os.File
 	writer *bufio.Writer
+	mutex  sync.RWMutex
 }
 
 // OpenWal creates a new Write Ahead Log and returns a WAL struct
 func OpenWal(path string) (*WAL, error) {
+	fmt.Printf("Opening WAL at path: %s\n", path)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, err
@@ -32,6 +36,9 @@ func OpenWal(path string) (*WAL, error) {
 // WriterEntry saves an operation in the WAL
 
 func (wal *WAL) WriteEntry(op byte, id string, vector []float32, metadata []byte, loc FileLocation) error {
+	wal.mutex.Lock()
+	defer wal.mutex.Unlock()
+
 	// Calculate sizes
 	idBytes := []byte(id)
 	idLen := uint32(len(idBytes))
@@ -75,12 +82,26 @@ func (wal *WAL) WriteEntry(op byte, id string, vector []float32, metadata []byte
 		return err
 	}
 
-	return wal.writer.Flush()
+	if err := wal.writer.Flush(); err != nil {
+		return err
+	}
+	if err := wal.file.Sync(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Close ensures everything is written to disk
 func (w *WAL) Close() error {
-	w.writer.Flush()
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	if err := w.writer.Flush(); err != nil {
+		return err
+	}
+	if err := w.file.Sync(); err != nil {
+		return err
+	}
 	return w.file.Close()
 }
 
@@ -88,6 +109,8 @@ func (w *WAL) Close() error {
 type WALIterator func(id string, vector []float32, meta []byte, loc FileLocation)
 
 func (wal *WAL) Recover(fn WALIterator) error {
+	wal.mutex.Lock()
+	defer wal.mutex.Unlock()
 	// Reset file pointer to start
 	wal.file.Seek(0, 0)
 	reader := bufio.NewReader(wal.file)
@@ -103,37 +126,59 @@ func (wal *WAL) Recover(fn WALIterator) error {
 		}
 
 		// 2. Read Operation
-		op, _ := reader.ReadByte()
+		op, err := reader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				break // End of file, we are done
+			}
+			return err
+		}
 
 		// 3. Read ID
 		var idLen uint32
-		binary.Read(reader, binary.LittleEndian, &idLen)
+		if err := binary.Read(reader, binary.LittleEndian, &idLen); err != nil {
+			return err
+		}
 		idBytes := make([]byte, idLen)
-		reader.Read(idBytes)
+		if _, err := reader.Read(idBytes); err != nil {
+			return err
+		}
 		id := string(idBytes)
 
 		// 4. Read Vector
 		var vecLen uint32
-		binary.Read(reader, binary.LittleEndian, &vecLen)
+		if err := binary.Read(reader, binary.LittleEndian, &vecLen); err != nil {
+			return err
+		}
 		vecCount := vecLen / 4
 		vector := make([]float32, vecCount)
 		for i := 0; i < int(vecCount); i++ {
-			binary.Read(reader, binary.LittleEndian, &vector[i])
+			if err := binary.Read(reader, binary.LittleEndian, &vector[i]); err != nil {
+				return err
+			}
 		}
 
 		// 5. Read Metadata
 		var metaLen uint32
-		binary.Read(reader, binary.LittleEndian, &metaLen)
+		if err := binary.Read(reader, binary.LittleEndian, &metaLen); err != nil {
+			return err
+		}
 		meta := make([]byte, metaLen)
-		reader.Read(meta)
+		if _, err := reader.Read(meta); err != nil {
+			return err
+		}
 
 		// Read Offset
 		var offset int64
-		binary.Read(reader, binary.LittleEndian, &offset)
+		if err := binary.Read(reader, binary.LittleEndian, &offset); err != nil {
+			return err
+		}
 
 		// Read Length after offset
 		var locLen int32
-		binary.Read(reader, binary.LittleEndian, &locLen)
+		if err := binary.Read(reader, binary.LittleEndian, &locLen); err != nil {
+			return err
+		}
 
 		// 6. Execute callback (Re-insert into DB)
 		if op == OpInsert {
