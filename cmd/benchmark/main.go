@@ -26,7 +26,7 @@ var (
 	dimension    = 128
 	totalVectors = 5_00 // default, overridden via flags
 	numQueries   = 1000
-	numShards    = 3
+	numShards    = 1
 	metricsPort  = 9091
 )
 
@@ -94,7 +94,7 @@ func main() {
 	}()
 
 	for i := 0; i < numShards; i++ {
-		// Create a 3-node Raft cluster for each shard
+		// Create a 1-node Raft cluster for each shard
 		const nodesPerShard = 3
 		var nodes []*cluster.RaftNode
 

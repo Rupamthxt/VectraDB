@@ -25,6 +25,7 @@ func NewFSM(db *store.VectraDB) *FSM {
 	return &FSM{db: db}
 }
 
+// Apply applies a Raft Log Entry to the FSM.
 func (f *FSM) Apply(log *raft.Log) interface{} {
 	var cmd Command
 	if err := json.Unmarshal(log.Data, &cmd); err != nil {
@@ -45,7 +46,7 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 
 func (f *FSM) Restore(rc io.ReadCloser) error {
 	defer rc.Close()
-	// Implement restore logic if needed
+	// TODO: Implement restore logic
 	return nil
 }
 
