@@ -149,17 +149,3 @@ func (db *VectraDB) Search(query []float32, topK int) []VectroRecord {
 	return db.hnsw.Search(query, topK)
 
 }
-
-// func cosineSimilarity(a, b []float32) float32 {
-// 	var dot, mag1, mag2 float32
-// 	for i := range a {
-// 		dot += a[i] * b[i]
-// 		mag1 += a[i] * a[i]
-// 		mag2 += b[i] * b[i]
-// 	}
-// 	if mag1 == 0 || mag2 == 0 {
-// 		return 0
-// 	}
-// 	return dot / (float32(math.Sqrt(float64(mag1)))) * float32(math.Sqrt(float64(mag2)))
-
-// }
