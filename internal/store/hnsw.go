@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"math/rand"
+	"sort"
 	"sync"
 )
 
@@ -27,6 +28,11 @@ type HNSWIndex struct {
 	MaxLayer    int
 	Arena       *VectorArena
 	sync.RWMutex
+}
+
+type nodeDist struct {
+	node *HNSWNode
+	dist float32
 }
 
 // Return a new HNSW Index Tree
@@ -162,6 +168,34 @@ func (h *HNSWIndex) Add(vector []float32, id string, idx uint32) {
 // Search finds and returns the k closest nodes to the query vector using the HNSW algorithm.
 // For simplicity, we return only the closest node here,
 // but in production, we'd maintain a priority queue of candidates to return top K results.
+// func (h *HNSWIndex) Search(query []float32, k int) []VectroRecord {
+// 	h.RLock()
+// 	entryID := h.EntryNodeID
+// 	maxL := h.MaxLayer
+// 	h.RUnlock()
+
+// 	if entryID == "" {
+// 		return nil
+// 	}
+
+// 	curr := h.Nodes[entryID]
+
+// 	for l := maxL; l > 0; l-- {
+// 		curr, _ = h.searchLayer(query, curr, l)
+// 	}
+
+// 	bestNode, _ := h.searchLayer(query, curr, 0)
+// 	bestVector, _ := h.Arena.Get(bestNode.ArenaOffset)
+
+// 	return []VectroRecord{
+// 		{
+// 			ID:    bestNode.ID,
+// 			Score: 1 - dist(query, bestVector),
+// 			Data:  json.RawMessage{},
+// 		},
+// 	}
+// }
+
 func (h *HNSWIndex) Search(query []float32, k int) []VectroRecord {
 	h.RLock()
 	entryID := h.EntryNodeID
@@ -174,18 +208,92 @@ func (h *HNSWIndex) Search(query []float32, k int) []VectroRecord {
 
 	curr := h.Nodes[entryID]
 
+	// ZOOM PHASE: Fast traversal down to Layer 1 (Finds a great starting point)
 	for l := maxL; l > 0; l-- {
 		curr, _ = h.searchLayer(query, curr, l)
 	}
 
-	bestNode, _ := h.searchLayer(query, curr, 0)
-	bestVector, _ := h.Arena.Get(bestNode.ArenaOffset)
-
-	return []VectroRecord{
-		{
-			ID:    bestNode.ID,
-			Score: 1 - dist(query, bestVector),
-			Data:  json.RawMessage{},
-		},
+	// BUILD THE NET: Layer 0 Top-K Search
+	// ef (Exploration Factor) controls accuracy vs speed.
+	// In production, ef is usually higher than K (e.g., K=10, ef=64).
+	ef := k
+	if ef < 10 {
+		ef = 10
 	}
+
+	// Prevent infinite loops in the graph
+	visited := make(map[string]bool)
+	visited[curr.ID] = true
+
+	currVec, _ := h.Arena.Get(curr.ArenaOffset)
+	currDist := dist(query, currVec)
+
+	// 'candidates' are nodes we still need to explore. 'results' are the best ones we've found.
+	candidates := []nodeDist{{node: curr, dist: currDist}}
+	results := []nodeDist{{node: curr, dist: currDist}}
+
+	for len(candidates) > 0 {
+		// Pop the closest node from candidates
+		c := candidates[0]
+		candidates = candidates[1:]
+
+		// What is the worst result we currently consider "good"?
+		furthestResultDist := results[len(results)-1].dist
+
+		// EARLY STOPPING: If our closest candidate is further away than our worst result,
+		// and we already have enough results, the search space is exhausted!
+		if c.dist > furthestResultDist && len(results) >= k {
+			break
+		}
+
+		c.node.RLock()
+		// Get all friends at Layer 0
+		friends := c.node.Connections[0]
+		c.node.RUnlock()
+
+		for _, friendID := range friends {
+			if !visited[h.Nodes[friendID].ID] {
+				visited[h.Nodes[friendID].ID] = true
+
+				fVec, _ := h.Arena.Get(h.Nodes[friendID].ArenaOffset)
+				fDist := dist(query, fVec)
+
+				// If this friend is better than our worst result, or we don't have enough results yet
+				if fDist < furthestResultDist || len(results) < k {
+					candidates = append(candidates, nodeDist{node: h.Nodes[friendID], dist: fDist})
+					results = append(results, nodeDist{node: h.Nodes[friendID], dist: fDist})
+
+					// Sort candidates ascending (closest first)
+					sort.Slice(candidates, func(i, j int) bool {
+						return candidates[i].dist < candidates[j].dist
+					})
+
+					// Sort results ascending and trim to our exploration factor (ef)
+					sort.Slice(results, func(i, j int) bool {
+						return results[i].dist < results[j].dist
+					})
+					if len(results) > ef {
+						results = results[:ef]
+					}
+				}
+			}
+		}
+	}
+
+	// FORMAT THE OUTPUT
+	// Trim down to exactly K items if we gathered more
+	if len(results) > k {
+		results = results[:k]
+	}
+
+	var output []VectroRecord
+	for _, r := range results {
+		output = append(output, VectroRecord{
+			ID:    r.node.ID,
+			Score: 1 - r.dist, // Assuming your dist() is Euclidean/Cosine converted to a similarity score
+			Data:  json.RawMessage(`{}`),
+		})
+	}
+
+	return output
 }

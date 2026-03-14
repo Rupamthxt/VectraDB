@@ -7,17 +7,22 @@ import (
 	"sync"
 )
 
+// FileLocation holds the location of a vector in the disk
+// in terms of offset and length
 type FileLocation struct {
 	Offset int64
 	Length int32
 }
 
+// DiskStore is a simple disk-based storage system that allows
+// appending data and reading it back using the FileLocation.
 type DiskStore struct {
 	mu   sync.RWMutex
 	file *os.File
 	pos  int64 // current write position
 }
 
+// NewDiskStore initializes a new DiskStore at the given path.
 func NewDiskStore(path string) (*DiskStore, error) {
 
 	dir := filepath.Dir(path)
@@ -41,6 +46,7 @@ func NewDiskStore(path string) (*DiskStore, error) {
 	}, nil
 }
 
+// Write appends data to the disk and returns its FileLocation
 func (ds *DiskStore) Write(data []byte) (FileLocation, error) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
@@ -58,6 +64,7 @@ func (ds *DiskStore) Write(data []byte) (FileLocation, error) {
 	return loc, nil
 }
 
+// Read retrieves data from the disk based on the provided FileLocation
 func (ds *DiskStore) Read(loc FileLocation) ([]byte, error) {
 	ds.mu.RLock()
 	defer ds.mu.RUnlock()
@@ -71,6 +78,7 @@ func (ds *DiskStore) Read(loc FileLocation) ([]byte, error) {
 	return buffer, nil
 }
 
+// Close closes the underlying file of the DiskStore
 func (ds *DiskStore) Close() error {
 	return ds.file.Close()
 }

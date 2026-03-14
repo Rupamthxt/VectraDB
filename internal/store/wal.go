@@ -85,9 +85,6 @@ func (wal *WAL) WriteEntry(op byte, id string, vector []float32, metadata []byte
 	if err := wal.writer.Flush(); err != nil {
 		return err
 	}
-	if err := wal.file.Sync(); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -189,4 +186,10 @@ func (wal *WAL) Recover(fn WALIterator) error {
 	// Move pointer back to end for appending new writes
 	wal.file.Seek(0, 2)
 	return nil
+}
+
+func (wal *WAL) Sync() error {
+	wal.mutex.Lock()
+	defer wal.mutex.Unlock()
+	return wal.file.Sync()
 }

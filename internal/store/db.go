@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	// "math"
 
@@ -66,6 +67,16 @@ func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
 		count++
 	})
 	fmt.Printf("Recovered %d records from WAL\n", count)
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := db.wal.Sync(); err != nil {
+				fmt.Println("Failed to sync WAL: ", err)
+			}
+		}
+	}()
 
 	return db, nil
 }
@@ -138,17 +149,3 @@ func (db *VectraDB) Search(query []float32, topK int) []VectroRecord {
 	return db.hnsw.Search(query, topK)
 
 }
-
-// func cosineSimilarity(a, b []float32) float32 {
-// 	var dot, mag1, mag2 float32
-// 	for i := range a {
-// 		dot += a[i] * b[i]
-// 		mag1 += a[i] * a[i]
-// 		mag2 += b[i] * b[i]
-// 	}
-// 	if mag1 == 0 || mag2 == 0 {
-// 		return 0
-// 	}
-// 	return dot / (float32(math.Sqrt(float64(mag1)))) * float32(math.Sqrt(float64(mag2)))
-
-// }
