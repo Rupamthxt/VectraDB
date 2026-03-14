@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	// "math"
 
@@ -66,6 +67,16 @@ func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
 		count++
 	})
 	fmt.Printf("Recovered %d records from WAL\n", count)
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := db.wal.Sync(); err != nil {
+				fmt.Println("Failed to sync WAL: ", err)
+			}
+		}
+	}()
 
 	return db, nil
 }

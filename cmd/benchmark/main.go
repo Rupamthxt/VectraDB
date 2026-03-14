@@ -24,7 +24,7 @@ const (
 
 var (
 	dimension    = 128
-	totalVectors = 5_00 // default, overridden via flags
+	totalVectors = 5_000 // default, overridden via flags
 	numQueries   = 1000
 	numShards    = 3
 	metricsPort  = 9091
@@ -221,8 +221,8 @@ func main() {
 	fmt.Printf("🚀 HNSW QPS: %.2f\n", qps)
 
 	// keep process running so prometheus can scrape metrics after benchmark completes
-	// fmt.Println("🔋 benchmark complete – metrics remain available at :9091/metrics until you stop the program")
-	// select{}
+	fmt.Println("🔋 benchmark complete – metrics remain available at :9091/metrics until you stop the program")
+	select {}
 }
 
 func randomVector(dim int) []float32 {
