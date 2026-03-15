@@ -3,11 +3,6 @@ package store
 import (
 	"encoding/json"
 	"fmt"
-	"time"
-
-	// "math"
-
-	// "sort"
 	"sync"
 )
 
@@ -32,8 +27,6 @@ type VectraDB struct {
 
 	dim int
 
-	wal *WAL
-
 	HNSW *HNSWIndex
 }
 
@@ -42,10 +35,6 @@ func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
 	ds, err := NewDiskStore(fmt.Sprintf("%s/data.bin", storagePath))
 	if err != nil {
 		return nil, fmt.Errorf("Failed to init disk store at %s: %w", storagePath, err)
-	}
-	wal, err := OpenWal(fmt.Sprintf("%s/wal.bin", storagePath))
-	if err != nil {
-		return nil, err
 	}
 	localArena := NewVectorArena(dim)
 
@@ -56,27 +45,8 @@ func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
 		metaLocs: make(map[uint32]FileLocation),
 		disk:     ds,
 		dim:      dim,
-		wal:      wal,
 		HNSW:     NewHNSWIndex(localArena),
 	}
-
-	fmt.Println("Replaying WAL to restore data....")
-	count := 0
-	err = wal.Recover(func(id string, vector []float32, meta []byte, loc FileLocation) {
-		db.insertInMemory(id, vector, loc)
-		count++
-	})
-	fmt.Printf("Recovered %d records from WAL\n", count)
-
-	go func() {
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			if err := db.wal.Sync(); err != nil {
-				fmt.Println("Failed to sync WAL: ", err)
-			}
-		}
-	}()
 
 	return db, nil
 }
@@ -96,11 +66,6 @@ func (db *VectraDB) Insert(id string, vector []float32, data any) error {
 	}
 
 	loc, err := db.disk.Write(bytes)
-	if err != nil {
-		return err
-	}
-
-	err = db.wal.WriteEntry(OpInsert, id, vector, bytes, loc)
 	if err != nil {
 		return err
 	}
