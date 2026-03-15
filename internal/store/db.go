@@ -23,7 +23,7 @@ type VectraDB struct {
 	revIndex []string
 
 	// Hot Path Storage
-	arena *VectorArena
+	Arena *VectorArena
 
 	// Cold Path Storage
 	metaLocs map[uint32]FileLocation
@@ -34,7 +34,7 @@ type VectraDB struct {
 
 	wal *WAL
 
-	hnsw *HNSWIndex
+	HNSW *HNSWIndex
 }
 
 func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
@@ -52,12 +52,12 @@ func NewVectraDB(dim int, storagePath string) (*VectraDB, error) {
 	db := &VectraDB{
 		index:    make(map[string]uint32),
 		revIndex: make([]string, 10000),
-		arena:    localArena,
+		Arena:    localArena,
 		metaLocs: make(map[uint32]FileLocation),
 		disk:     ds,
 		dim:      dim,
 		wal:      wal,
-		hnsw:     NewHNSWIndex(localArena),
+		HNSW:     NewHNSWIndex(localArena),
 	}
 
 	fmt.Println("Replaying WAL to restore data....")
@@ -90,7 +90,7 @@ func (db *VectraDB) Insert(id string, vector []float32, data any) error {
 		return fmt.Errorf("Failed to marshal metadata: %w", err)
 	}
 
-	idx, err := db.arena.Add(vector)
+	idx, err := db.Arena.Add(vector)
 	if err != nil {
 		return err
 	}
@@ -110,13 +110,13 @@ func (db *VectraDB) Insert(id string, vector []float32, data any) error {
 
 	db.metaLocs[idx] = loc
 
-	db.hnsw.Add(vector, id, idx)
+	db.HNSW.Add(vector, id, idx)
 
 	return nil
 }
 
 func (db *VectraDB) insertInMemory(id string, vector []float32, loc FileLocation) error {
-	idx, err := db.arena.Add(vector)
+	idx, err := db.Arena.Add(vector)
 
 	db.index[id] = idx
 	db.revIndex[idx] = id
@@ -133,7 +133,7 @@ func (db *VectraDB) Get(id string) ([]float32, []byte, bool) {
 		return nil, nil, false
 	}
 
-	vec, _ := db.arena.Get(idx)
+	vec, _ := db.Arena.Get(idx)
 	metaLoc := db.metaLocs[idx]
 	meta, err := db.disk.Read(metaLoc)
 	if err != nil {
@@ -146,6 +146,6 @@ func (db *VectraDB) Search(query []float32, topK int) []VectroRecord {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 
-	return db.hnsw.Search(query, topK)
+	return db.HNSW.Search(query, topK)
 
 }

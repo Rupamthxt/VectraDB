@@ -40,18 +40,39 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 }
 
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
-	return &NoOpSnapshot{}, nil
+	// Obtain a read lock on the HNSW index to ensure consistency during snapshot
+	f.db.HNSW.RLock()
+	defer f.db.HNSW.RUnlock()
+
+	var records []VectorRecord
+
+	for id, nodes := range f.db.HNSW.Nodes {
+		vec, err := f.db.Arena.Get(nodes.ArenaOffset)
+		if err == nil {
+			records = append(records, VectorRecord{
+				ID:     id,
+				Vector: vec,
+			})
+		}
+	}
+
+	return &fsmSnapshot{records: records}, nil
 }
 
 func (f *FSM) Restore(rc io.ReadCloser) error {
 	defer rc.Close()
-	// Implement restore logic if needed
+
+	var records []VectorRecord
+	if err := json.NewDecoder(rc).Decode(&records); err != nil {
+		return err
+	}
+
+	for _, record := range records {
+		arenaOffset, err := f.db.Arena.Add(record.Vector)
+		if err != nil {
+			return err
+		}
+		f.db.HNSW.Add(record.Vector, record.ID, arenaOffset)
+	}
 	return nil
 }
-
-// Dummy struct for snapshot
-type NoOpSnapshot struct{}
-
-func (s *NoOpSnapshot) Persist(sink raft.SnapshotSink) error { return sink.Close() }
-
-func (s *NoOpSnapshot) Release() {}
