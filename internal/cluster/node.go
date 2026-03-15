@@ -34,6 +34,13 @@ func NewRaftNode(shardID int, nodeID string, baseDir string, raftPort int, db *s
 	config := raft.DefaultConfig()
 	config.LocalID = raft.ServerID(nodeID)
 
+	// LOG COMPACTION SETTINGS:
+	// Take a snapshot every 500 operations!
+	config.SnapshotInterval = 30 * time.Second
+	config.SnapshotThreshold = 500
+	// Keep the last 2 snapshots on disk, delete older ones
+	config.TrailingLogs = 100
+
 	addr := fmt.Sprintf("127.0.0.1:%d", raftPort)
 	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
