@@ -67,3 +67,15 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 
 	return c.JSON(SearchResponse{Results: responseItems})
 }
+
+func (h *Handler) Delete(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is missing"})
+	}
+	err := h.cluster.Delete(id)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "data deleted successfully"})
+}

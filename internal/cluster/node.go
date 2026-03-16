@@ -128,3 +128,29 @@ func (rn *RaftNode) Insert(id string, vector []float32, data interface{}) error 
 func (rn *RaftNode) Search(query []float32, topK int) []store.VectroRecord {
 	return rn.DB.Search(query, topK)
 }
+
+func (rn *RaftNode) Delete(id string) error {
+	if rn.Raft.State() != raft.Leader {
+		return fmt.Errorf("not the leader of this shard")
+	}
+
+	cmd := Command{
+		Op: "delete",
+		Id: id,
+	}
+
+	b, err := json.Marshal(cmd)
+	if err != nil {
+		return err
+	}
+
+	future := rn.Raft.Apply(b, RaftTimeout)
+	if err := future.Error(); err != nil {
+		return err
+	}
+
+	if fsmErr, ok := future.Response().(error); ok {
+		return fsmErr
+	}
+	return nil
+}

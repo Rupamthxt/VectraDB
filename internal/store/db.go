@@ -80,15 +80,6 @@ func (db *VectraDB) Insert(id string, vector []float32, data any) error {
 	return nil
 }
 
-func (db *VectraDB) insertInMemory(id string, vector []float32, loc FileLocation) error {
-	idx, err := db.Arena.Add(vector)
-
-	db.index[id] = idx
-	db.revIndex[idx] = id
-	db.metaLocs[idx] = loc
-	return err
-}
-
 func (db *VectraDB) Get(id string) ([]float32, []byte, bool) {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
@@ -113,4 +104,8 @@ func (db *VectraDB) Search(query []float32, topK int) []VectroRecord {
 
 	return db.HNSW.Search(query, topK)
 
+}
+
+func (db *VectraDB) Delete(id string) error {
+	return db.HNSW.Delete(id)
 }

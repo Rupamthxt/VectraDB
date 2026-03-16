@@ -56,6 +56,15 @@ func (s *shardGroup) Search(query []float32, topK int) []store.VectroRecord {
 	return nil
 }
 
+func (s *shardGroup) Delete(id string) error {
+	for _, n := range s.nodes {
+		if n.Raft.State() == raft.Leader {
+			return n.Delete(id)
+		}
+	}
+	return fmt.Errorf("no leader for shard")
+}
+
 func main() {
 	// allow customization via flags
 	dimPtr := flag.Int("dim", dimension, "vector dimension")

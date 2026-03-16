@@ -9,6 +9,7 @@ import (
 type ShardHandler interface {
 	Insert(id string, vector []float32, data interface{}) error
 	Search(query []float32, topK int) []VectroRecord
+	Delete(id string) error
 }
 
 type Cluster struct {
@@ -67,4 +68,9 @@ func (c *Cluster) Search(query []float32, topK int) []VectroRecord {
 		return allMatches[:topK]
 	}
 	return allMatches
+}
+
+func (c *Cluster) Delete(id string) error {
+	targetShard := c.getShard(id)
+	return targetShard.Delete(id)
 }

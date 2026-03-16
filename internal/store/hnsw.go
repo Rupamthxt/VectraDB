@@ -277,11 +277,12 @@ func (h *HNSWIndex) Search(query []float32, k int) []VectroRecord {
 
 // Delete marks a node as deleted using a tombstone. Thne actual node remains intact to preserve structure
 // but is ignored in search results.
-func (h *HNSWIndex) Delete(id string) {
+func (h *HNSWIndex) Delete(id string) error {
 	h.Lock()
 	defer h.Unlock()
 
 	if _, exists := h.Nodes[id]; exists {
 		h.Tombstones[id] = true
 	}
+	return nil
 }

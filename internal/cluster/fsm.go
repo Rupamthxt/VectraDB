@@ -51,6 +51,11 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 	var records []VectorRecord
 
 	for id, nodes := range f.db.HNSW.Nodes {
+
+		// If node is tombstone, just skip it. We won't write it in snapshot.
+		if f.db.HNSW.Tombstones[id] {
+			continue
+		}
 		vec, err := f.db.Arena.Get(nodes.ArenaOffset)
 		if err == nil {
 			records = append(records, VectorRecord{
