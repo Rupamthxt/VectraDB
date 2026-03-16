@@ -69,11 +69,15 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 }
 
 func (h *Handler) Delete(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
+	var req DeleteRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "cannot parse json"})
+	}
+
+	if req.ID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id is missing"})
 	}
-	err := h.cluster.Delete(id)
+	err := h.cluster.Delete(req.ID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}

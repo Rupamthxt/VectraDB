@@ -20,3 +20,7 @@ type SearchResult struct {
 	Score float32 `json:"score"`
 	Data  any     `json:"metadata"`
 }
+
+type DeleteRequest struct {
+	ID string `json:"id"`
+}
