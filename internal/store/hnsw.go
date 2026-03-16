@@ -27,6 +27,7 @@ type HNSWIndex struct {
 	Nodes       map[string]*HNSWNode
 	MaxLayer    int
 	Arena       *VectorArena
+	Tombstones  map[string]bool
 	sync.RWMutex
 }
 
@@ -38,9 +39,10 @@ type nodeDist struct {
 // Return a new HNSW Index Tree
 func NewHNSWIndex(arena *VectorArena) *HNSWIndex {
 	return &HNSWIndex{
-		Nodes:    make(map[string]*HNSWNode),
-		MaxLayer: -1,
-		Arena:    arena,
+		Nodes:      make(map[string]*HNSWNode),
+		MaxLayer:   -1,
+		Arena:      arena,
+		Tombstones: make(map[string]bool),
 	}
 }
 
@@ -166,36 +168,6 @@ func (h *HNSWIndex) Add(vector []float32, id string, idx uint32) {
 }
 
 // Search finds and returns the k closest nodes to the query vector using the HNSW algorithm.
-// For simplicity, we return only the closest node here,
-// but in production, we'd maintain a priority queue of candidates to return top K results.
-// func (h *HNSWIndex) Search(query []float32, k int) []VectroRecord {
-// 	h.RLock()
-// 	entryID := h.EntryNodeID
-// 	maxL := h.MaxLayer
-// 	h.RUnlock()
-
-// 	if entryID == "" {
-// 		return nil
-// 	}
-
-// 	curr := h.Nodes[entryID]
-
-// 	for l := maxL; l > 0; l-- {
-// 		curr, _ = h.searchLayer(query, curr, l)
-// 	}
-
-// 	bestNode, _ := h.searchLayer(query, curr, 0)
-// 	bestVector, _ := h.Arena.Get(bestNode.ArenaOffset)
-
-// 	return []VectroRecord{
-// 		{
-// 			ID:    bestNode.ID,
-// 			Score: 1 - dist(query, bestVector),
-// 			Data:  json.RawMessage{},
-// 		},
-// 	}
-// }
-
 func (h *HNSWIndex) Search(query []float32, k int) []VectroRecord {
 	h.RLock()
 	entryID := h.EntryNodeID
@@ -258,22 +230,27 @@ func (h *HNSWIndex) Search(query []float32, k int) []VectroRecord {
 				fVec, _ := h.Arena.Get(h.Nodes[friendID].ArenaOffset)
 				fDist := dist(query, fVec)
 
-				// If this friend is better than our worst result, or we don't have enough results yet
-				if fDist < furthestResultDist || len(results) < k {
-					candidates = append(candidates, nodeDist{node: h.Nodes[friendID], dist: fDist})
-					results = append(results, nodeDist{node: h.Nodes[friendID], dist: fDist})
+				h.RLock()
+				isDeleted := h.Tombstones[friendID]
+				h.RUnlock()
 
-					// Sort candidates ascending (closest first)
-					sort.Slice(candidates, func(i, j int) bool {
-						return candidates[i].dist < candidates[j].dist
-					})
+				candidates = append(candidates, nodeDist{node: h.Nodes[friendID], dist: fDist})
+				// Sort candidates ascending (closest first)
+				sort.Slice(candidates, func(i, j int) bool {
+					return candidates[i].dist < candidates[j].dist
+				})
 
-					// Sort results ascending and trim to our exploration factor (ef)
-					sort.Slice(results, func(i, j int) bool {
-						return results[i].dist < results[j].dist
-					})
-					if len(results) > ef {
-						results = results[:ef]
+				if !isDeleted {
+					// If this friend is better than our worst result, or we don't have enough results yet
+					if fDist < furthestResultDist || len(results) < k {
+						results = append(results, nodeDist{node: h.Nodes[friendID], dist: fDist})
+						// Sort results ascending and trim to our exploration factor (ef)
+						sort.Slice(results, func(i, j int) bool {
+							return results[i].dist < results[j].dist
+						})
+						if len(results) > ef {
+							results = results[:ef]
+						}
 					}
 				}
 			}
@@ -296,4 +273,15 @@ func (h *HNSWIndex) Search(query []float32, k int) []VectroRecord {
 	}
 
 	return output
+}
+
+// Delete marks a node as deleted using a tombstone. Thne actual node remains intact to preserve structure
+// but is ignored in search results.
+func (h *HNSWIndex) Delete(id string) {
+	h.Lock()
+	defer h.Unlock()
+
+	if _, exists := h.Nodes[id]; exists {
+		h.Tombstones[id] = true
+	}
 }

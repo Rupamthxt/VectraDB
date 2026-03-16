@@ -35,6 +35,9 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	switch cmd.Op {
 	case "insert":
 		return f.db.Insert(cmd.Id, cmd.Vector, cmd.Data)
+	case "delete":
+		f.db.HNSW.Delete(cmd.Id)
+		return nil
 	default:
 		return fmt.Errorf("unknown command: %s", cmd.Op)
 	}
