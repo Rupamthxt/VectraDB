@@ -109,3 +109,12 @@ func (db *VectraDB) Search(query []float32, topK int) []VectroRecord {
 func (db *VectraDB) Delete(id string) error {
 	return db.HNSW.Delete(id)
 }
+
+func (db *VectraDB) InsertInMemory(id string, vector []float32) (uint32, error) {
+	idx, err := db.Arena.Add(vector)
+
+	db.index[id] = idx
+	db.revIndex[idx] = id
+	// db.metaLocs[idx] = loc
+	return idx, err
+}

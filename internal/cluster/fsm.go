@@ -76,7 +76,8 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 	}
 
 	for _, record := range records {
-		arenaOffset, err := f.db.Arena.Add(record.Vector)
+		// arenaOffset, err := f.db.Arena.Add(record.Vector)
+		arenaOffset, err := f.db.InsertInMemory(record.ID, record.Vector)
 		if err != nil {
 			return err
 		}

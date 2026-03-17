@@ -5,7 +5,7 @@ services:
       - "8080:8080"
     volumes:
       - vectra_storage:/app/data
-    command: ["./vectradb", "-bootstrap=true"]
+    command: ["./vectradb"]
 
   prometheus:
     image: prom/prometheus:latest

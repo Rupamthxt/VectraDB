@@ -24,7 +24,7 @@ func NewCluster(shards []ShardHandler) *Cluster {
 	}
 }
 
-func (c *Cluster) getShard(id string) ShardHandler {
+func (c *Cluster) GetShard(id string) ShardHandler {
 	h := fnv.New32a()
 	h.Write([]byte(id))
 	idx := int(h.Sum32()) % c.numShards
@@ -35,7 +35,7 @@ func (c *Cluster) getShard(id string) ShardHandler {
 }
 
 func (c *Cluster) Insert(id string, vector []float32, data any) error {
-	targetShard := c.getShard(id)
+	targetShard := c.GetShard(id)
 	return targetShard.Insert(id, vector, data)
 }
 
@@ -71,6 +71,6 @@ func (c *Cluster) Search(query []float32, topK int) []VectroRecord {
 }
 
 func (c *Cluster) Delete(id string) error {
-	targetShard := c.getShard(id)
+	targetShard := c.GetShard(id)
 	return targetShard.Delete(id)
 }
