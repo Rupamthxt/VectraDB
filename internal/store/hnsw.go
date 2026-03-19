@@ -74,7 +74,7 @@ func (h *HNSWIndex) searchLayer(query []float32, entryPoint *HNSWNode, layer int
 	if err != nil {
 		return nil, err
 	}
-	minDist := dist(query, currVector)
+	minDist := DistQuantized(Quantize(query), currVector)
 
 	for {
 		changed := false
@@ -88,7 +88,7 @@ func (h *HNSWIndex) searchLayer(query []float32, entryPoint *HNSWNode, layer int
 			if err != nil {
 				return nil, err
 			}
-			d := dist(query, friendVector)
+			d := DistQuantized(Quantize(query), friendVector)
 			if d < minDist {
 				minDist = d
 				curr = friendNode
@@ -198,7 +198,7 @@ func (h *HNSWIndex) Search(query []float32, k int) []VectroRecord {
 	visited[curr.ID] = true
 
 	currVec, _ := h.Arena.Get(curr.ArenaOffset)
-	currDist := dist(query, currVec)
+	currDist := DistQuantized(Quantize(query), currVec)
 
 	// 'candidates' are nodes we still need to explore. 'results' are the best ones we've found.
 	candidates := []nodeDist{{node: curr, dist: currDist}}
@@ -228,7 +228,7 @@ func (h *HNSWIndex) Search(query []float32, k int) []VectroRecord {
 				visited[h.Nodes[friendID].ID] = true
 
 				fVec, _ := h.Arena.Get(h.Nodes[friendID].ArenaOffset)
-				fDist := dist(query, fVec)
+				fDist := DistQuantized(Quantize(query), fVec)
 
 				h.RLock()
 				isDeleted := h.Tombstones[friendID]

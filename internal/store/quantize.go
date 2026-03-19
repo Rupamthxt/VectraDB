@@ -51,6 +51,9 @@ func (q *QuantizedVector) Dequantize() []float32 {
 	return fData
 }
 
+// DistQuantize calculates the approximate squared Euclidean distance between two vectors
+// natively in int8. This is much faster as integer math is cheaper dompared to floating
+// point math.
 func DistQuantized(q1, q2 QuantizedVector) float32 {
 	var dot, sq1, sq2 int32
 
@@ -74,7 +77,7 @@ func DistQuantized(q1, q2 QuantizedVector) float32 {
 	term3 := -2.0 * s1 * s2 * float32(dot)
 	term4 := float32(len(q1.Data)) * (m1 - m2) * (m1 - m2)
 
-	// We need sum of elements for the cross terms
+	// Sum of elements for the cross terms
 	var sum1, sum2 int32
 	for i := 0; i < len(q1.Data); i++ {
 		sum1 += int32(q1.Data[i])

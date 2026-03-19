@@ -93,9 +93,9 @@ func (db *VectraDB) Get(id string) ([]float32, []byte, bool) {
 	metaLoc := db.metaLocs[idx]
 	meta, err := db.disk.Read(metaLoc)
 	if err != nil {
-		return vec, nil, true
+		return vec.Dequantize(), nil, true
 	}
-	return vec, meta, true
+	return vec.Dequantize(), meta, true
 }
 
 func (db *VectraDB) Search(query []float32, topK int) []VectroRecord {

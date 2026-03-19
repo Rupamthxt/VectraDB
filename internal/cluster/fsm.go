@@ -60,7 +60,7 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 		if err == nil {
 			records = append(records, VectorRecord{
 				ID:     id,
-				Vector: vec,
+				Vector: vec.Dequantize(),
 			})
 		}
 	}
