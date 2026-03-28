@@ -77,7 +77,6 @@ func DistQuantized(q1, q2 QuantizedVector) float32 {
 	term3 := -2.0 * s1 * s2 * float32(dot)
 	term4 := float32(len(q1.Data)) * (m1 - m2) * (m1 - m2)
 
-	// Sum of elements for the cross terms
 	var sum1, sum2 int32
 	for i := 0; i < len(q1.Data); i++ {
 		sum1 += int32(q1.Data[i])
