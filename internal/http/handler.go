@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hashicorp/raft"
+	"github.com/rupamthxt/vectradb/cmd"
+
+	// "github.com/rupamthxt/vectradb/internal/cluster"
 	"github.com/rupamthxt/vectradb/internal/store"
 )
 
@@ -82,4 +86,15 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "data deleted successfully"})
+}
+
+func (h *Handler) Join(c *fiber.Ctx) error {
+	var req JoinRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "cannot parse json"})
+	}
+	s := h.cluster.GetShardByID(req.ShardID)
+	s.(*cmd.ShardGroup).nodes[0].Raft.AddVoter(raft.ServerID(req.NodeID), raft.ServerAddress(req.Address), 0, 0)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "node joined successfully"})
+
 }

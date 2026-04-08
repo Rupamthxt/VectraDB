@@ -20,11 +20,11 @@ import (
 
 const SnapshotPath = "./vectradb.snap"
 
-type shardGroup struct {
+type ShardGroup struct {
 	nodes []*cluster.RaftNode
 }
 
-func (s *shardGroup) Insert(id string, vector []float32, data any) error {
+func (s *ShardGroup) Insert(id string, vector []float32, data any) error {
 	for _, n := range s.nodes {
 		if n.Raft.State() == raft.Leader {
 			return n.Insert(id, vector, data)
@@ -33,7 +33,7 @@ func (s *shardGroup) Insert(id string, vector []float32, data any) error {
 	return fmt.Errorf("no leader for shard")
 }
 
-func (s *shardGroup) Search(query []float32, topK int) []store.VectroRecord {
+func (s *ShardGroup) Search(query []float32, topK int) []store.VectroRecord {
 	// Read from the first available node (may be eventual) or the leader if known.
 	for _, n := range s.nodes {
 		if n.Raft.State() == raft.Leader {
@@ -46,7 +46,7 @@ func (s *shardGroup) Search(query []float32, topK int) []store.VectroRecord {
 	return nil
 }
 
-func (s *shardGroup) Delete(id string) error {
+func (s *ShardGroup) Delete(id string) error {
 	for _, n := range s.nodes {
 		if n.Raft.State() == raft.Leader {
 			return n.Delete(id)
@@ -61,6 +61,7 @@ func main() {
 	bootstrap := flag.Bool("bootstrap", false, "Bootstrap the node as leader")
 	numShards := flag.Int("shards", 3, "Number of concurrent shards")
 	raftPort := flag.Int("raft-port", 9000, "Port for the raft node")
+	shard := flag.Int("shard", 0, "Shard ID to join (0-based index)")
 	flag.Parse()
 
 	const baseDir = "app/data"
@@ -112,9 +113,32 @@ func main() {
 				time.Sleep(100 * time.Millisecond)
 			}
 
-			shards = append(shards, &shardGroup{nodes: nodes})
+			shards = append(shards, &ShardGroup{nodes: nodes})
 
 		}
+	} else {
+		nodeId := fmt.Sprintf("node_%x", time.Now().UnixNano())
+		nodeDir := fmt.Sprintf("%s/shard_%d/%s", baseDir, *shard, nodeId)
+		os.MkdirAll(nodeDir, 0755)
+
+		db, err := store.NewVectraDB(128, nodeDir)
+		if err != nil {
+			log.Fatalf("Error creating database %v", err)
+		}
+		raftNode, err := cluster.NewRaftNode(*shard, nodeId, baseDir, *raftPort, db)
+		if err != nil {
+			log.Fatalf("Error creating raft node %v", err)
+		}
+		server := raft.Server{
+			ID:      raft.ServerID(nodeId),
+			Address: raft.ServerAddress(fmt.Sprintf("127.0.0.1:%d", *raftPort)),
+		}
+
+		err = shards[*shard].(*ShardGroup).nodes[0].Raft.AddVoter(server.ID, server.Address, 0, 0).Error()
+		if err != nil {
+			log.Fatalf("Error joining raft cluster: %v", err)
+		}
+		shards[*shard].(*ShardGroup).nodes = append(shards[*shard].(*ShardGroup).nodes, raftNode)
 	}
 
 	time.Sleep(3 * time.Second) // Wait for elections
@@ -130,6 +154,7 @@ func main() {
 	api.Post("/insert", handler.Insert)
 	api.Post("/search", handler.Search)
 	api.Post("/delete", handler.Delete)
+	api.Post("/join", handler.Join)
 
 	log.Println("VectraDB listening on port : 8080")
 	log.Fatal(app.Listen(":8080"))

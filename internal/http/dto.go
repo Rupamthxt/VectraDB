@@ -24,3 +24,9 @@ type SearchResult struct {
 type DeleteRequest struct {
 	ID string `json:"id"`
 }
+
+type JoinRequest struct {
+	NodeID  string `json:"node_id"`
+	Address string `json:"address"`
+	ShardID int    `json:"shard_id"`
+}

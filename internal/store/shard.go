@@ -34,6 +34,10 @@ func (c *Cluster) GetShard(id string) ShardHandler {
 	return c.shards[idx]
 }
 
+func (c *Cluster) GetShardByID(n int) ShardHandler {
+	return c.shards[n]
+}
+
 func (c *Cluster) Insert(id string, vector []float32, data any) error {
 	targetShard := c.GetShard(id)
 	return targetShard.Insert(id, vector, data)
