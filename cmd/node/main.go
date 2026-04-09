@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -116,6 +117,26 @@ func main() {
 			shards = append(shards, &ShardGroup{nodes: nodes})
 
 		}
+		time.Sleep(3 * time.Second) // Wait for elections
+		c := store.NewCluster(shards)
+
+		app := fiber.New()
+		app.Use(logger.New())
+
+		handler := vectorHttp.NewHandler(c)
+		app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
+
+		api := app.Group("/api/v1")
+		api.Post("/insert", handler.Insert)
+		api.Post("/search", handler.Search)
+		api.Post("/delete", handler.Delete)
+		api.Post("/join", func(c *fiber.Ctx) error {
+			_, err := handler.Join(c)
+			return err
+		})
+
+		log.Println("VectraDB listening on port : 8080")
+		log.Fatal(app.Listen(":8080"))
 	} else {
 		nodeId := fmt.Sprintf("node_%x", time.Now().UnixNano())
 		nodeDir := fmt.Sprintf("%s/shard_%d/%s", baseDir, *shard, nodeId)
@@ -133,6 +154,7 @@ func main() {
 			ID:      raft.ServerID(nodeId),
 			Address: raft.ServerAddress(fmt.Sprintf("127.0.0.1:%d", *raftPort)),
 		}
+		s, err := http.Post()
 
 		err = shards[*shard].(*ShardGroup).nodes[0].Raft.AddVoter(server.ID, server.Address, 0, 0).Error()
 		if err != nil {
@@ -140,23 +162,5 @@ func main() {
 		}
 		shards[*shard].(*ShardGroup).nodes = append(shards[*shard].(*ShardGroup).nodes, raftNode)
 	}
-
-	time.Sleep(3 * time.Second) // Wait for elections
-	c := store.NewCluster(shards)
-
-	app := fiber.New()
-	app.Use(logger.New())
-
-	handler := vectorHttp.NewHandler(c)
-	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
-
-	api := app.Group("/api/v1")
-	api.Post("/insert", handler.Insert)
-	api.Post("/search", handler.Search)
-	api.Post("/delete", handler.Delete)
-	api.Post("/join", handler.Join)
-
-	log.Println("VectraDB listening on port : 8080")
-	log.Fatal(app.Listen(":8080"))
 
 }

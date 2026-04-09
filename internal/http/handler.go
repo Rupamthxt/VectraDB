@@ -4,10 +4,6 @@ import (
 	"encoding/json"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/hashicorp/raft"
-	"github.com/rupamthxt/vectradb/cmd"
-
-	// "github.com/rupamthxt/vectradb/internal/cluster"
 	"github.com/rupamthxt/vectradb/internal/store"
 )
 
@@ -19,6 +15,7 @@ func NewHandler(cluster *store.Cluster) *Handler {
 	return &Handler{cluster: cluster}
 }
 
+// Insert handles insert requests and adds a new vector record to the cluster
 func (h *Handler) Insert(c *fiber.Ctx) error {
 	var req InsertRequest
 
@@ -38,6 +35,7 @@ func (h *Handler) Insert(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "data inserted successfully"})
 }
 
+// Search handles search requests and returns top K similar vectors from the database
 func (h *Handler) Search(c *fiber.Ctx) error {
 	var req SearchRequest
 
@@ -72,6 +70,7 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 	return c.JSON(SearchResponse{Results: responseItems})
 }
 
+// Delete handles delete requests and flags a vector with tombstone for deletion
 func (h *Handler) Delete(c *fiber.Ctx) error {
 	var req DeleteRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -88,13 +87,12 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "data deleted successfully"})
 }
 
-func (h *Handler) Join(c *fiber.Ctx) error {
+// Join handles join requests and returns a shard for the specific ID to be used by a new node for joining a cluster.
+func (h *Handler) Join(c *fiber.Ctx) (store.ShardHandler, error) {
 	var req JoinRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "cannot parse json"})
+		return nil, c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "cannot parse json"})
 	}
 	s := h.cluster.GetShardByID(req.ShardID)
-	s.(*cmd.ShardGroup).nodes[0].Raft.AddVoter(raft.ServerID(req.NodeID), raft.ServerAddress(req.Address), 0, 0)
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "node joined successfully"})
-
+	return s, nil
 }
