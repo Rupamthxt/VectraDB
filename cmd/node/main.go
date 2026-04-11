@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -154,9 +156,12 @@ func main() {
 			ID:      raft.ServerID(nodeId),
 			Address: raft.ServerAddress(fmt.Sprintf("127.0.0.1:%d", *raftPort)),
 		}
-		s, err := http.Post()
+		data := map[string]int{"shard_id": 0}
+		jsonData, _ := json.Marshal(data)
 
-		err = shards[*shard].(*ShardGroup).nodes[0].Raft.AddVoter(server.ID, server.Address, 0, 0).Error()
+		s, err := http.Post("127.0.0.1:8080/api/v1/join", "application/json", bytes.NewBuffer(jsonData))
+
+		err = s.(*ShardGroup).nodes[0].Raft.AddVoter(server.ID, server.Address, 0, 0).Error()
 		if err != nil {
 			log.Fatalf("Error joining raft cluster: %v", err)
 		}
