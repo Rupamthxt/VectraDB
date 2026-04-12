@@ -35,6 +35,9 @@ func (c *Cluster) GetShard(id string) ShardHandler {
 }
 
 func (c *Cluster) GetShardByID(n int) ShardHandler {
+	if n < 0 || n >= c.numShards {
+		return nil
+	}
 	return c.shards[n]
 }
 

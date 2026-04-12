@@ -26,5 +26,7 @@ type DeleteRequest struct {
 }
 
 type JoinRequest struct {
-	ShardID int `json:"shard_id"`
+	ShardID  int    `json:"shard_id"`
+	ServerID string `json:"raft_id"`
+	Address  string `json:"raft_addr"`
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -56,6 +57,15 @@ func (s *ShardGroup) Delete(id string) error {
 		}
 	}
 	return fmt.Errorf("no leader for shard")
+}
+
+func (s *ShardGroup) Leader() *cluster.RaftNode {
+	for _, n := range s.nodes {
+		if n.Raft.State() == raft.Leader {
+			return n
+		}
+	}
+	return nil
 }
 
 func main() {
@@ -132,14 +142,12 @@ func main() {
 		api.Post("/insert", handler.Insert)
 		api.Post("/search", handler.Search)
 		api.Post("/delete", handler.Delete)
-		api.Post("/join", func(c *fiber.Ctx) error {
-			_, err := handler.Join(c)
-			return err
-		})
+		api.Post("/join", handler.Join)
 
 		log.Println("VectraDB listening on port : 8080")
 		log.Fatal(app.Listen(":8080"))
 	} else {
+		fmt.Println("reached1")
 		nodeId := fmt.Sprintf("node_%x", time.Now().UnixNano())
 		nodeDir := fmt.Sprintf("%s/shard_%d/%s", baseDir, *shard, nodeId)
 		os.MkdirAll(nodeDir, 0755)
@@ -148,24 +156,32 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error creating database %v", err)
 		}
-		raftNode, err := cluster.NewRaftNode(*shard, nodeId, baseDir, *raftPort, db)
+		fmt.Println("reached2")
+		_, err = cluster.NewRaftNode(*shard, nodeId, baseDir, *raftPort, db)
 		if err != nil {
 			log.Fatalf("Error creating raft node %v", err)
 		}
-		server := raft.Server{
-			ID:      raft.ServerID(nodeId),
-			Address: raft.ServerAddress(fmt.Sprintf("127.0.0.1:%d", *raftPort)),
+		fmt.Println("reached3")
+		data := map[string]any{
+			"shard_id":  *shard,
+			"raft_id":   nodeId,
+			"raft_addr": fmt.Sprintf("127.0.0.1:%d", *raftPort),
 		}
-		data := map[string]int{"shard_id": 0}
 		jsonData, _ := json.Marshal(data)
 
-		s, err := http.Post("127.0.0.1:8080/api/v1/join", "application/json", bytes.NewBuffer(jsonData))
-
-		err = s.(*ShardGroup).nodes[0].Raft.AddVoter(server.ID, server.Address, 0, 0).Error()
+		joinURL := "http://127.0.0.1:8080/api/v1/join"
+		resp, err := http.Post(joinURL, "application/json", bytes.NewBuffer(jsonData))
 		if err != nil {
-			log.Fatalf("Error joining raft cluster: %v", err)
+			log.Fatalf("Error sending join request: %v", err)
 		}
-		shards[*shard].(*ShardGroup).nodes = append(shards[*shard].(*ShardGroup).nodes, raftNode)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			log.Fatalf("Join request failed with status %d &body= %s", resp.StatusCode, string(body))
+		}
+		log.Printf("joined shard %d successfully as %s", *shard, nodeId)
+
+		select {}
 	}
 
 }

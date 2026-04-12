@@ -56,6 +56,15 @@ func (s *shardGroup) Delete(id string) error {
 	return fmt.Errorf("no leader for shard")
 }
 
+func (s *shardGroup) Leader() *cluster.RaftNode {
+	for _, n := range s.nodes {
+		if n.Raft.State() == raft.Leader {
+			return n
+		}
+	}
+	return nil
+}
+
 func main() {
 	fmt.Println("Initializing VectraDB (High-Perf) mode...")
 

@@ -2,13 +2,21 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hashicorp/raft"
+	"github.com/rupamthxt/vectradb/internal/cluster"
 	"github.com/rupamthxt/vectradb/internal/store"
 )
 
 type Handler struct {
 	cluster *store.Cluster
+}
+
+type leaderAwareShard interface {
+	Leader() *cluster.RaftNode
 }
 
 func NewHandler(cluster *store.Cluster) *Handler {
@@ -88,11 +96,36 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 }
 
 // Join handles join requests and returns a shard for the specific ID to be used by a new node for joining a cluster.
-func (h *Handler) Join(c *fiber.Ctx) (store.ShardHandler, error) {
+func (h *Handler) Join(c *fiber.Ctx) error {
+	log.Printf("Reached1\n")
 	var req JoinRequest
 	if err := c.BodyParser(&req); err != nil {
-		return nil, c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "cannot parse json"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "cannot parse json"})
 	}
-	s := h.cluster.GetShardByID(req.ShardID)
-	return s, nil
+	shard := h.cluster.GetShardByID(req.ShardID)
+	if shard == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "shard not found"})
+	}
+	fmt.Printf("reached2")
+	leaderShard, ok := shard.(leaderAwareShard)
+	if !ok {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "shard does not support leader lookup"})
+	}
+	leader := leaderShard.Leader()
+	if leader == nil {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "no leader available for shard"})
+	}
+	fmt.Printf("reached3")
+	configFuture := leader.Raft.AddVoter(
+		raft.ServerID(req.ServerID),
+		raft.ServerAddress(req.Address),
+		0,
+		0,
+	)
+	fmt.Printf("reached4")
+	if err := configFuture.Error(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	fmt.Printf("reached5")
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "node joined successfully"})
 }
