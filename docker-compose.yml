@@ -26,6 +26,20 @@ services:
     image: grafana/grafana
     ports:
       - "3000:3000"
+  
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./promtail-config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
 volumes:
   vectra_storage:
   prometheus_storage:
