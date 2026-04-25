@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hashicorp/raft"
 	"github.com/rupamthxt/vectradb/internal/cluster"
+	"github.com/rupamthxt/vectradb/internal/metrics"
 	"github.com/rupamthxt/vectradb/internal/store"
 )
 
@@ -27,6 +29,7 @@ func NewHandler(cluster *store.Cluster) *Handler {
 func (h *Handler) Insert(c *fiber.Ctx) error {
 	var req InsertRequest
 
+	metrics.InsertRequests.Inc()
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "cannot parse json"})
 	}
@@ -35,10 +38,13 @@ func (h *Handler) Insert(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "id and vector are required"})
 	}
 
+	timeNow := time.Now()
 	err := h.cluster.Insert(req.ID, req.Vector, req.Data)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
+	metrics.InsertDuration.Observe(time.Since(timeNow).Seconds())
+	metrics.TotalVectors.Inc()
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "data inserted successfully"})
 }
@@ -47,6 +53,7 @@ func (h *Handler) Insert(c *fiber.Ctx) error {
 func (h *Handler) Search(c *fiber.Ctx) error {
 	var req SearchRequest
 
+	metrics.SearchRequests.Inc()
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "cannot parse json"})
 	}
@@ -59,8 +66,9 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 		req.TopK = 5 // Default TopK
 	}
 
+	timeNow := time.Now()
 	results := h.cluster.Search(req.Vector, req.TopK)
-
+	metrics.SearchDuration.Observe(time.Since(timeNow).Seconds())
 	responseItems := make([]SearchResult, 0, len(results))
 	for _, res := range results {
 		var metaMap map[string]any
@@ -92,6 +100,7 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
+	metrics.TotalVectors.Dec()
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "data deleted successfully"})
 }
 

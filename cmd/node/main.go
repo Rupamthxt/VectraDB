@@ -147,7 +147,6 @@ func main() {
 		log.Println("VectraDB listening on port : 8080")
 		log.Fatal(app.Listen(":8080"))
 	} else {
-		fmt.Println("reached1")
 		nodeId := fmt.Sprintf("node_%x", time.Now().UnixNano())
 		nodeDir := fmt.Sprintf("%s/shard_%d/%s", baseDir, *shard, nodeId)
 		os.MkdirAll(nodeDir, 0755)
@@ -156,12 +155,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error creating database %v", err)
 		}
-		fmt.Println("reached2")
 		_, err = cluster.NewRaftNode(*shard, nodeId, baseDir, *raftPort, db)
 		if err != nil {
 			log.Fatalf("Error creating raft node %v", err)
 		}
-		fmt.Println("reached3")
 		data := map[string]any{
 			"shard_id":  *shard,
 			"raft_id":   nodeId,
